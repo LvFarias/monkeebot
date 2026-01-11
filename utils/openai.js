@@ -3,10 +3,22 @@ import OpenAI from 'openai';
 import dotenv from 'dotenv';
 dotenv.config();
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+let openaiClient = null;
+
+function getOpenAiClient() {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) return null;
+  if (!openaiClient) {
+    openaiClient = new OpenAI({ apiKey });
+  }
+  return openaiClient;
+}
 
 export async function getMonkeeReply(messages) {
-  const response = await openai.chat.completions.create({
+  const client = getOpenAiClient();
+  if (!client) return null;
+
+  const response = await client.chat.completions.create({
     model: 'gpt-4o-mini',
     messages: [
       {

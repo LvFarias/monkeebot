@@ -19,6 +19,7 @@ const client = new Client({
   partials: [Partials.Channel],
 });
 client.commands = new Collection();
+let monkeeMissingKeyNotified = false;
 
 // Load command files
 const commandFiles = fs.readdirSync('./commands').filter(file => file.endsWith('.js'));
@@ -132,6 +133,14 @@ client.on(Events.MessageCreate, async message => {
 
 async function handleMonkeeMessage(client, message) {
   if (!isMonkeeEnabled()) return;
+
+  if (!process.env.OPENAI_API_KEY) {
+    if (!monkeeMissingKeyNotified) {
+      await message.reply('Monkee AI is not configured: OPENAI_API_KEY is missing.');
+      monkeeMissingKeyNotified = true;
+    }
+    return;
+  }
 
   try {
     const fetchedMessages = await message.channel.messages.fetch({ limit: 10 });
