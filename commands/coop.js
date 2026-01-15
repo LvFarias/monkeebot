@@ -544,15 +544,20 @@ export async function execute(interaction) {
 
 async function respondWithContracts(interaction, focused) {
   const contracts = await fetchContractSummaries();
-  const ids = [...contracts]
-    .sort((a, b) => (b.release ?? 0) - (a.release ?? 0))
-    .map(contract => contract.id)
-    .filter(Boolean);
+  const sorted = [...contracts].sort((a, b) => (b.release ?? 0) - (a.release ?? 0));
   const lower = focused.toLowerCase();
-  const filtered = ids
-    .filter(id => id.toLowerCase().includes(lower))
+  const filtered = sorted
+    .filter(contract => {
+      const id = contract.id?.toLowerCase() ?? '';
+      const name = contract.name?.toLowerCase() ?? '';
+      return id.includes(lower) || name.includes(lower);
+    })
     .slice(0, 15)
-    .map(id => ({ name: id, value: id }));
+    .map(contract => {
+      const label = contract.name || contract.id;
+      const description = contract.name ? contract.id : undefined;
+      return { name: label, value: contract.id, description };
+    });
 
   await interaction.respond(filtered);
 }
