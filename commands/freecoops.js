@@ -62,18 +62,26 @@ export async function execute(interaction) {
 
   const coopCodesToCheck = buildCoopCodes(codesOption);
   const { seasonal = [], leggacy = [] } = await fetchActiveContracts();
+  const summaries = await fetchContractSummaries();
+  const nameById = new Map(summaries.map(c => [c.id, c.name || c.id]));
   const combined = [...seasonal, ...leggacy];
 
   await interaction.deferReply();
 
   let selectedContracts;
   if (contractInput === '__ALL__') {
-    selectedContracts = combined;
+    selectedContracts = combined.map(([name, id]) => [nameById.get(id) || name, id]);
   } else if (contractInput === '__ALL_SEASONAL__') {
-    selectedContracts = seasonal;
+    selectedContracts = seasonal.map(([name, id]) => [nameById.get(id) || name, id]);
   } else {
     const matched = combined.find(([, id]) => id === contractInput);
-    selectedContracts = matched ? [matched] : [[contractInput, contractInput]];
+    if (matched) {
+      const [name, id] = matched;
+      selectedContracts = [[nameById.get(id) || name, id]];
+    } else {
+      const displayName = nameById.get(contractInput) || contractInput;
+      selectedContracts = [[displayName, contractInput]];
+    }
   }
 
   if (!selectedContracts.length) {
