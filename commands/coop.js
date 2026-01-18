@@ -384,19 +384,15 @@ async function handleAddPlayers(interaction) {
     return;
   }
 
-  const ensure = await addCoopIfMissing(contract, coop);
-  if (!ensure.ok) {
-    await interaction.reply(
-      createTextComponentMessage(`Failed to prepare coop: ${ensure.reason ?? 'unknown error'}`, { flags: 64 })
-    );
-    return;
-  }
-
   const result = await addPlayersToCoop({ contract, coop, userInput });
   if (!result.ok) {
     let message = `Failed to link players: ${result.reason ?? 'unknown error'}`;
     if (result.reason === 'no-users') {
       message = 'No valid Discord IDs provided.';
+    } else if (result.reason === 'unknown-contract') {
+      message = `Invalid contract ID: ${contract}`;
+    } else if (result.reason === 'coop-not-found') {
+      message = `Coop ${contract}/${coop} does not exist. Add it first with </coop addcoop:1427617464535089254>.`;
     }
     await interaction.reply(createTextComponentMessage(message, { flags: 64 }));
     return;
@@ -444,9 +440,12 @@ async function handleAddReport(interaction) {
 
   const ensure = await addCoopIfMissing(contract, coop);
   if (!ensure.ok) {
-    await interaction.reply(
-      createTextComponentMessage(`Failed to prepare coop: ${ensure.reason ?? 'unknown error'}`, { flags: 64 })
-    );
+    let message = `Failed to prepare coop: ${ensure.reason ?? 'unknown error'}`;
+    if (ensure.reason === 'unknown-contract') {
+      message = `Invalid contract ID: ${contract}`;
+    }
+
+    await interaction.reply(createTextComponentMessage(message, { flags: 64 }));
     return;
   }
 

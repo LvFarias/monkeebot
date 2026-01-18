@@ -63,6 +63,11 @@ async function ensureCoopExists(contract, coop) {
     return { ok: false, reason: 'invalid-input' };
   }
 
+  const known = await ensureKnownContract(normalizedContract);
+  if (!known) {
+    return { ok: false, reason: 'unknown-contract', contract: normalizedContract };
+  }
+
   const existing = listCoopsForContract(normalizedContract);
   if (existing.includes(normalizedCoop)) {
     return { ok: true, created: false };
@@ -74,6 +79,26 @@ async function ensureCoopExists(contract, coop) {
   }
 
   return { ok: false, reason: addResult.reason ?? 'unknown-error' };
+}
+
+async function ensureExistingCoop(contract, coop) {
+  const normalizedContract = contract?.trim();
+  const normalizedCoop = coop?.trim();
+  if (!normalizedContract || !normalizedCoop) {
+    return { ok: false, reason: 'invalid-input' };
+  }
+
+  const known = await ensureKnownContract(normalizedContract);
+  if (!known) {
+    return { ok: false, reason: 'unknown-contract', contract: normalizedContract };
+  }
+
+  const existing = listCoopsForContract(normalizedContract);
+  if (!existing.includes(normalizedCoop)) {
+    return { ok: false, reason: 'coop-not-found', contract: normalizedContract, coop: normalizedCoop };
+  }
+
+  return { ok: true, contract: normalizedContract, coop: normalizedCoop };
 }
 
 export async function addCoopFromInput({ rawInput, push = false }) {
@@ -118,7 +143,7 @@ export async function addPlayersToCoop({ contract, coop, userInput }) {
     return { ok: false, reason: 'no-users' };
   }
 
-  const ensure = await ensureCoopExists(normalizedContract, normalizedCoop);
+  const ensure = await ensureExistingCoop(normalizedContract, normalizedCoop);
   if (!ensure.ok) {
     return ensure;
   }
