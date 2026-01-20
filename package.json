@@ -14,7 +14,6 @@
         "cosine-similarity": "^1.0.1",
         "discord.js": "^14.19.3",
         "dotenv": "^16.5.0",
-        "easyurban": "^1.0.0",
         "luxon": "^3.7.2",
         "node-fetch": "^3.3.2",
         "openai": "^5.1.1",
