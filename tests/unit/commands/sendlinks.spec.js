@@ -9,6 +9,10 @@ vi.mock('../../../services/coopService.js', () => ({
   listAllCoops: vi.fn(),
 }));
 
+vi.mock('../../../services/seasonService.js', () => ({
+  listSeasons: vi.fn(() => []),
+}));
+
 vi.mock('node:fs', () => {
   const fsMock = {
     existsSync: vi.fn(),
