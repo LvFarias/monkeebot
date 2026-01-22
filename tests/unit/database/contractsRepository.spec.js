@@ -49,8 +49,8 @@ describe('database/contractsRepository', () => {
     ]);
 
     expect(upsertStmt.run).toHaveBeenCalledTimes(2);
-    expect(upsertStmt.run).toHaveBeenCalledWith('c1', 'Name', 123, 'fall_2024', 'egg');
-    expect(upsertStmt.run).toHaveBeenCalledWith('42', null, 0, '2024', null);
+    expect(upsertStmt.run).toHaveBeenCalledWith('c1', 'Name', 123, 'fall_2024', 'egg', null, null, null, null);
+    expect(upsertStmt.run).toHaveBeenCalledWith('42', null, 0, '2024', null, null, null, null, null);
   });
 
   it('returns stored contracts', () => {

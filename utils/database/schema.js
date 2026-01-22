@@ -9,9 +9,35 @@ function ensureContractsTable() {
       name TEXT,
       release INTEGER DEFAULT 0,
       season TEXT,
-      egg TEXT
+      egg TEXT,
+      max_coop_size INTEGER,
+      coop_duration_seconds REAL,
+      egg_goal REAL,
+      minutes_per_token REAL
     );
   `);
+
+  const cols = db.prepare("PRAGMA table_info('contracts')").all();
+  const hasMaxCoopSize = cols.some(col => col.name === 'max_coop_size');
+  const hasCoopDurationSeconds = cols.some(col => col.name === 'coop_duration_seconds');
+  const hasEggGoal = cols.some(col => col.name === 'egg_goal');
+  const hasMinutesPerToken = cols.some(col => col.name === 'minutes_per_token');
+
+  if (!hasMaxCoopSize) {
+    db.exec('ALTER TABLE contracts ADD COLUMN max_coop_size INTEGER');
+  }
+
+  if (!hasCoopDurationSeconds) {
+    db.exec('ALTER TABLE contracts ADD COLUMN coop_duration_seconds REAL');
+  }
+
+  if (!hasEggGoal) {
+    db.exec('ALTER TABLE contracts ADD COLUMN egg_goal REAL');
+  }
+
+  if (!hasMinutesPerToken) {
+    db.exec('ALTER TABLE contracts ADD COLUMN minutes_per_token REAL');
+  }
 }
 
 function ensureMetaTable() {

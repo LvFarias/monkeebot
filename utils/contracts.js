@@ -15,6 +15,17 @@ let cachedProtoRoot = null;
 const SEASON_ORDER = ['winter', 'spring', 'summer', 'fall'];
 const THREE_WEEKS = { weeks: 3 };
 const ONE_WEEK = { weeks: 1 };
+const GRADE_AAA = 5;
+
+function toNumber(value) {
+  if (value == null) return null;
+  if (typeof value === 'object' && typeof value.toNumber === 'function') {
+    const num = value.toNumber();
+    return Number.isFinite(num) ? num : null;
+  }
+  const num = Number(value);
+  return Number.isFinite(num) ? num : null;
+}
 
 const SEASON_REGEX = /^(winter|spring|summer|fall)[ _-]?(\d{4})$/;
 
@@ -29,13 +40,45 @@ function mapRemoteContract(obj, ContractType, eggEnum) {
   const name = decoded.name || 'Unknown';
   const release = decoded.startTime || 0;
   const season = decoded.seasonId || '';
+  const maxCoopSize = toNumber(decoded.maxCoopSize ?? decoded.max_coop_size ?? null);
+  const minutesPerToken = toNumber(decoded.minutesPerToken ?? decoded.minutes_per_token ?? null);
   let egg = eggEnum.valuesById[decoded.egg] || 'UNKNOWN';
 
   if (decoded.egg === 200) {
-    egg = decoded.customEggId.toUpperCase().replaceAll('-', '_') || 'UNKNOWN';
+    egg = decoded.customEggId?.toUpperCase().replaceAll('-', '_') || 'UNKNOWN';
   }
 
-  return { id: obj.id, name, release, season, egg };
+  const gradeSpecs = decoded.gradeSpecs ?? decoded.grade_specs ?? [];
+  const eliteSpec = Array.isArray(gradeSpecs)
+    ? gradeSpecs.find(spec => (spec.grade ?? spec.grade_) === GRADE_AAA)
+    : null;
+
+  const coopDurationSeconds = eliteSpec
+    ? toNumber(eliteSpec.lengthSeconds ?? eliteSpec.length_seconds ?? null)
+    : null;
+
+  let eggGoal = null;
+  const goals = eliteSpec?.goals ?? [];
+  if (Array.isArray(goals) && goals.length > 0) {
+    for (const goal of goals) {
+      const targetAmount = toNumber(goal.targetAmount ?? goal.target_amount ?? null);
+      if (Number.isFinite(targetAmount)) {
+        eggGoal = eggGoal == null ? targetAmount : Math.max(eggGoal, targetAmount);
+      }
+    }
+  }
+
+  return {
+    id: obj.id,
+    name,
+    release,
+    season,
+    egg,
+    maxCoopSize,
+    coopDurationSeconds,
+    eggGoal,
+    minutesPerToken,
+  };
 }
 
 async function fetchAndCacheContracts() {
