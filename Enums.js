@@ -45,7 +45,8 @@ const ArtifactEmoji = {
     QUANTUM_4: `<:Afx_quantum_stone_4:1463684184621977762>`,
     TACHYON_4: `<:Afx_tachyon_stone_4:1463684182352986184>`,
     DEFLECTOR_4: `<:Afx_tachyon_deflector_4:1463684180104970323>`,
-    NEO_MEDALLION_4: `<:Afx_neo_medallion_4:1463685017182933073>`
+    NEO_MEDALLION_4: `<:Afx_neo_medallion_4:1463685017182933073>`,
+    SIAB_4: `<:Afx_ship_in_a_bottle_4:1463866981991055565>`
 }
 
 export default { EggtoEmoji, ArtifactEmoji };

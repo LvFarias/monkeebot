@@ -47,10 +47,10 @@ export const data = new SlashCommandBuilder()
       .setAutocomplete(true)
       .setRequired(true)
   )
-  .addStringOption(option =>
+  .addNumberOption(option =>
     option
       .setName('token_speed')
-      .setDescription('Token gift speed per player (e.g., 6m, 11m, 15m)')
+      .setDescription('Token gift speed per player (minutes)')
       .setRequired(true)
   )
   .addBooleanOption(option =>
@@ -62,7 +62,7 @@ export const data = new SlashCommandBuilder()
 
 export async function execute(interaction) {
   const contractInput = interaction.options.getString('contract');
-  const tokenSpeedInput = interaction.options.getString('token_speed');
+  const tokenSpeedInput = interaction.options.getNumber('token_speed');
   const gg = interaction.options.getBoolean('gg') ?? false;
 
   let contractMatch = null;
@@ -77,7 +77,7 @@ export async function execute(interaction) {
   const targetEggs = Number.isFinite(contractMatch?.eggGoal) ? contractMatch.eggGoal : null;
   const tokenTimerMinutes = Number.isFinite(contractMatch?.minutesPerToken) ? contractMatch.minutesPerToken : null;
 
-  const giftMinutes = parseDurationToMinutes(tokenSpeedInput);
+  const giftMinutes = tokenSpeedInput;
 
   const missingFields = [];
   if (!Number.isFinite(players) || players <= 0) missingFields.push('players');
@@ -151,58 +151,87 @@ function buildModel(players, durationSeconds, targetEggs, tokenTimerMinutes, gif
   const baselineOtherDefl = (players - 1) * DEFLECTOR_TIERS.at(-1).percent;
   const baselineElrForStones = baseElrPerPlayer * (1 + baselineOtherDefl / 100);
   const stoneLayout = optimizeStones(baselineElrForStones, baseSrPerPlayer, totalSlots);
-  const elrWithStones = baseElrPerPlayer * Math.pow(1.05, stoneLayout.numTach);
   const srWithStones = baseSrPerPlayer * Math.pow(1.05, stoneLayout.numQuant);
   const elrPerChickenWithStones = baseELR * Math.pow(1.05, stoneLayout.numTach);
-  const elrPerChickenNoStones = baseELR;
-  const srNoStones = baseSrPerPlayer;
-
-  const requiredDeflector = Math.max(0, ((srWithStones / elrWithStones) - 1) * 100);
 
   const hasFixedTokens = Number.isFinite(assumptions.tokensPerPlayer) && assumptions.tokensPerPlayer > 0;
   const tokensForPrediction = hasFixedTokens
     ? assumptions.tokensPerPlayer
     : getTokensForPrediction(tokenTimerMinutes, giftMinutes, gg, players, baseIHR, maxChickens);
-  const baseScenario = simulateScenario({
-    players,
-    playerDeflectors: baselineDeflectors,
-    elrPerChickenNoStones,
-    elrPerChickenWithStones,
-    srNoStones,
-    srWithStones,
-    durationSeconds,
-    targetEggs,
-    tokenTimerMinutes,
-    giftMinutes,
-    gg,
-    baseIHR,
-    maxChickens,
-    tokensPerPlayer: tokensForPrediction,
-    siabPercent: assumptions.siabPercent,
-    cxpMode: assumptions.cxpMode,
-  });
-  const tokenUpgrade = optimizeLateBoostTokens({
-    players,
-    baseTokens: tokensForPrediction,
-    altTokens: 8,
-    baselineScenario: baseScenario,
-    baselineDeflectors,
-    elrPerChickenNoStones,
-    elrPerChickenWithStones,
-    srNoStones,
-    srWithStones,
-    durationSeconds,
-    targetEggs,
-    tokenTimerMinutes,
-    giftMinutes,
-    gg,
-    baseIHR,
-    maxChickens,
-    siabPercent: assumptions.siabPercent,
-    cxpMode: assumptions.cxpMode,
-  });
+  const tokensByPlayer = Array.from({ length: players }, () => tokensForPrediction);
 
-  const baselineScenario = tokenUpgrade.scenario ?? baseScenario;
+  const buildVariant = usePlayer1Siab => {
+    const playerConfigs = buildPlayerConfigs({
+      players,
+      maxChickens,
+      baseELR,
+      baseShip,
+      totalSlots,
+      baselineOtherDefl,
+      usePlayer1Siab,
+    });
+
+    const requiredDeflector = getRequiredOtherDeflector(playerConfigs);
+    const deflectorDisplay = buildDeflectorDisplay({
+      players,
+      baselineDeflectors,
+      requiredOtherDeflector: Math.ceil(requiredDeflector),
+      playerConfigs,
+    });
+
+    const tokenUpgrade = optimizeLateBoostTokensAfterDeflector({
+      players,
+      baseTokens: tokensForPrediction,
+      altTokens: 8,
+      baselineDeflectors,
+      playerConfigs,
+      durationSeconds,
+      targetEggs,
+      tokenTimerMinutes,
+      giftMinutes,
+      gg,
+      baseIHR,
+      cxpMode: assumptions.cxpMode,
+      deflectorDisplay,
+      assumptions,
+    });
+
+    const baselineScenario = tokenUpgrade.scenario ?? simulateScenario({
+      players,
+      playerDeflectors: baselineDeflectors,
+      playerConfigs,
+      durationSeconds,
+      targetEggs,
+      tokenTimerMinutes,
+      giftMinutes,
+      gg,
+      baseIHR,
+      tokensPerPlayer: tokensByPlayer,
+      cxpMode: assumptions.cxpMode,
+    });
+
+    return {
+      usePlayer1Siab,
+      playerConfigs,
+      requiredDeflector,
+      deflectorDisplay,
+      tokenUpgrade,
+      baselineScenario,
+      tokensByPlayer: tokenUpgrade.tokensByPlayer ?? tokensByPlayer,
+      score: tokenUpgrade.bestCs ?? 0,
+    };
+  };
+
+  const baseVariant = buildVariant(false);
+  const siabVariant = buildVariant(true);
+  const selectedVariant = siabVariant.score > baseVariant.score ? siabVariant : baseVariant;
+  const usePlayer1Siab = selectedVariant.usePlayer1Siab;
+  const selectedPlayerConfigs = selectedVariant.playerConfigs;
+  const requiredDeflector = selectedVariant.requiredDeflector;
+  const deflectorDisplay = selectedVariant.deflectorDisplay;
+  const tokenUpgrade = selectedVariant.tokenUpgrade;
+  const baselineScenario = selectedVariant.baselineScenario;
+  const finalTokensByPlayer = selectedVariant.tokensByPlayer;
   const deflectorPlan = buildDeflectorPlan(baselineDeflectors, DEFLECTOR_TIERS);
 
   const tokenPlan = buildTokenPlan(tokenTimerMinutes, giftMinutes, gg, players, baseIHR, maxChickens);
@@ -229,28 +258,74 @@ function buildModel(players, durationSeconds, targetEggs, tokenTimerMinutes, gif
     tokensForPrediction,
     hasFixedTokens,
     tokenPlan,
-    tokensByPlayer: tokenUpgrade.tokensByPlayer,
+    tokensByPlayer: finalTokensByPlayer,
     tokenUpgrade,
+    usePlayer1Siab,
+    playerConfigs: selectedPlayerConfigs,
+    deflectorDisplay,
   };
+}
+
+function buildPlayerConfigs(options) {
+  const {
+    players,
+    maxChickens,
+    baseELR,
+    baseShip,
+    totalSlots,
+    baselineOtherDefl,
+    usePlayer1Siab,
+  } = options;
+
+  const gussetBonus = Math.max(0, (BOOSTED_SET.gusset.chickMult ?? 1) - 1);
+  const player1ChickenPenalty = BASES.baseChickens * COLLECTIBLES.chickenMult * gussetBonus;
+  const player1SlotPenalty = 1;
+
+  return Array.from({ length: players }, (_, index) => {
+    const isPlayer1 = index === 0 && usePlayer1Siab;
+    const playerMaxChickens = Math.max(0, maxChickens - (isPlayer1 ? player1ChickenPenalty : 0));
+    const playerSlots = Math.max(0, totalSlots - (isPlayer1 ? player1SlotPenalty : 0));
+    const elrPerPlayer = playerMaxChickens * baseELR;
+    const elrForStones = elrPerPlayer * (1 + baselineOtherDefl / 100);
+    const stoneLayout = optimizeStones(elrForStones, baseShip, playerSlots);
+
+    return {
+      maxChickens: playerMaxChickens,
+      elrPerChickenNoStones: baseELR,
+      elrPerChickenWithStones: baseELR * Math.pow(1.05, stoneLayout.numTach),
+      srNoStones: baseShip,
+      srWithStones: baseShip * Math.pow(1.05, stoneLayout.numQuant),
+      stoneLayout,
+      siabPercent: isPlayer1 ? 100 : 0,
+    };
+  });
+}
+
+function getRequiredOtherDeflector(playerConfigs) {
+  if (!Array.isArray(playerConfigs) || playerConfigs.length === 0) return 0;
+  return playerConfigs.reduce((maxRequired, config) => {
+    if (!config?.maxChickens || !config?.elrPerChickenWithStones || !config?.srWithStones) {
+      return maxRequired;
+    }
+    const layRate = config.maxChickens * config.elrPerChickenWithStones;
+    if (layRate <= 0) return maxRequired;
+    const required = Math.max(0, (config.srWithStones / layRate - 1) * 100);
+    return Math.max(maxRequired, required);
+  }, 0);
 }
 function simulateScenario(options) {
   const {
     players,
     playerDeflectors,
-    elrPerChickenNoStones,
-    elrPerChickenWithStones,
-    srNoStones,
-    srWithStones,
     durationSeconds,
     targetEggs,
     tokenTimerMinutes,
     giftMinutes,
     gg,
     baseIHR,
-    maxChickens,
     tokensPerPlayer,
-    siabPercent,
     cxpMode,
+    playerConfigs,
   } = options;
 
   const totalDeflector = playerDeflectors.reduce((sum, value) => sum + value, 0);
@@ -264,19 +339,28 @@ function simulateScenario(options) {
   const tokensPerPlayerList = Array.isArray(tokensPerPlayer)
     ? tokensPerPlayer
     : Array.from({ length: playerDeflectors.length }, () => tokensPerPlayer);
-  const states = playerDeflectors.map((deflector, index) => ({
-    index: index + 1,
-    deflector,
-    otherDefl: totalDeflector - deflector,
-    tokens: Number.isFinite(tokensPerPlayerList[index]) ? tokensPerPlayerList[index] : tokensPerPlayer,
-    boostMulti: 1,
-    chickens: 0,
-    maxChickens,
-    eggsDelivered: 0,
-    btv: 0,
-    maxHab: false,
-    timeToBoost: null,
-  }));
+  const states = playerDeflectors.map((deflector, index) => {
+    const config = playerConfigs?.[index];
+    return {
+      index: index + 1,
+      deflector,
+      otherDefl: totalDeflector - deflector,
+      tokens: Number.isFinite(tokensPerPlayerList[index]) ? tokensPerPlayerList[index] : tokensPerPlayer,
+      boostMulti: 1,
+      chickens: 0,
+      maxChickens: config?.maxChickens ?? 0,
+      elrPerChickenNoStones: config?.elrPerChickenNoStones ?? 0,
+      elrPerChickenWithStones: config?.elrPerChickenWithStones ?? 0,
+      srNoStones: config?.srNoStones ?? 0,
+      srWithStones: config?.srWithStones ?? 0,
+      stoneLayout: config?.stoneLayout ?? null,
+      siabPercent: config?.siabPercent ?? 0,
+      eggsDelivered: 0,
+      btv: 0,
+      maxHab: false,
+      timeToBoost: null,
+    };
+  });
 
   const totals = runSimulationLoop({
     states,
@@ -288,11 +372,6 @@ function simulateScenario(options) {
     giftSeconds,
     ggMult,
     baseIHR,
-    elrPerChickenNoStones,
-    elrPerChickenWithStones,
-    srNoStones,
-    srWithStones,
-    siabPercent,
     cxpMode,
   });
 
@@ -391,11 +470,6 @@ function updatePlayers(options) {
     states,
     updateRate,
     baseIHR,
-    elrPerChickenNoStones,
-    elrPerChickenWithStones,
-    srNoStones,
-    srWithStones,
-    siabPercent,
     cxpMode,
   } = options;
 
@@ -409,12 +483,12 @@ function updatePlayers(options) {
       }
     }
 
-    const elrPerChicken = player.maxHab ? elrPerChickenWithStones : elrPerChickenNoStones;
-    const shipRate = player.maxHab ? srWithStones : srNoStones;
+    const elrPerChicken = player.maxHab ? player.elrPerChickenWithStones : player.elrPerChickenNoStones;
+    const shipRate = player.maxHab ? player.srWithStones : player.srNoStones;
     const layRate = player.chickens * elrPerChicken * (1 + player.otherDefl / 100);
     const deliveryRate = Math.min(layRate, shipRate);
     player.eggsDelivered += updateRate * deliveryRate / 3600;
-    player.btv += updateRate * getBtvRate(player.deflector, siabPercent, cxpMode);
+    player.btv += updateRate * getBtvRate(player.deflector, player.siabPercent, cxpMode);
 
     if (!player.maxHab) notMaxHabs += 1;
   });
@@ -494,6 +568,8 @@ function buildPlayerSummary(options) {
     cs,
     completionTime,
     timeToBoost: player.timeToBoost,
+    stoneLayout: player.stoneLayout,
+    siabPercent: player.siabPercent,
   };
 }
 
@@ -544,37 +620,27 @@ function optimizeLateBoostTokens(options) {
     altTokens,
     baselineScenario,
     baselineDeflectors,
-    elrPerChickenNoStones,
-    elrPerChickenWithStones,
-    srNoStones,
-    srWithStones,
     durationSeconds,
     targetEggs,
     tokenTimerMinutes,
     giftMinutes,
     gg,
     baseIHR,
-    maxChickens,
-    siabPercent,
     cxpMode,
+    playerConfigs,
   } = options;
 
   const baseScenario = baselineScenario ?? simulateScenario({
     players,
     playerDeflectors: baselineDeflectors,
-    elrPerChickenNoStones,
-    elrPerChickenWithStones,
-    srNoStones,
-    srWithStones,
+    playerConfigs,
     durationSeconds,
     targetEggs,
     tokenTimerMinutes,
     giftMinutes,
     gg,
     baseIHR,
-    maxChickens,
     tokensPerPlayer: baseTokens,
-    siabPercent,
     cxpMode,
   });
 
@@ -592,19 +658,14 @@ function optimizeLateBoostTokens(options) {
     const scenario = simulateScenario({
       players,
       playerDeflectors: baselineDeflectors,
-      elrPerChickenNoStones,
-      elrPerChickenWithStones,
-      srNoStones,
-      srWithStones,
+      playerConfigs,
       durationSeconds,
       targetEggs,
       tokenTimerMinutes,
       giftMinutes,
       gg,
       baseIHR,
-      maxChickens,
       tokensPerPlayer: tokensByPlayer,
-      siabPercent,
       cxpMode,
     });
 
@@ -716,7 +777,7 @@ function getMaxQuantScrubs(players, basePercent, requiredOtherDeflector) {
   return Math.max(0, Math.min(players, maxScrubs));
 }
 
-function getUnusedDeflectorPercent(players, playerDeflectors, maxChickens, elrPerChickenWithStones, srWithStones) {
+function getUnusedDeflectorPercent(players, playerDeflectors, playerConfigs) {
   if (players < 2) {
     return Math.round(playerDeflectors.reduce((sum, value) => sum + value, 0));
   }
@@ -725,19 +786,174 @@ function getUnusedDeflectorPercent(players, playerDeflectors, maxChickens, elrPe
   let minRatio = Number.POSITIVE_INFINITY;
   let minDeflMultiplier = 1;
 
-  playerDeflectors.forEach(deflector => {
+  playerDeflectors.forEach((deflector, index) => {
+    const config = playerConfigs?.[index];
+    if (!config?.maxChickens || !config?.elrPerChickenWithStones || !config?.srWithStones) return;
     const otherDefl = totalDeflector - deflector;
-    const layRate = maxChickens * elrPerChickenWithStones * (1 + otherDefl / 100);
-    const ratio = layRate / srWithStones;
+    const layRate = config.maxChickens * config.elrPerChickenWithStones * (1 + otherDefl / 100);
+    const ratio = layRate / config.srWithStones;
     if (ratio < minRatio) {
       minRatio = ratio;
       minDeflMultiplier = otherDefl / 100 + 1;
     }
   });
 
-  if (minRatio < 1) return 0;
+  if (!Number.isFinite(minRatio) || minRatio < 1) return 0;
   const unused = (minDeflMultiplier - 1) * 100 - (minDeflMultiplier / minRatio - 1) * 100;
   return Math.min(Math.floor(unused), Math.round(totalDeflector));
+}
+
+function buildDeflectorDisplay(options) {
+  const {
+    players,
+    baselineDeflectors,
+    requiredOtherDeflector,
+    playerConfigs,
+  } = options;
+  const highestTier = DEFLECTOR_TIERS.at(-1);
+  const epicTier = DEFLECTOR_TIERS.at(-2);
+
+  const displayDeflectors = baselineDeflectors.slice();
+  const initialUnused = getUnusedDeflectorPercent(players, displayDeflectors, playerConfigs);
+  const scrubCount = Math.max(0, Math.min(players, Math.floor(initialUnused / 20)));
+  const remainingAfterScrubs = Math.max(0, initialUnused - scrubCount * 20);
+  const epicCount = Math.max(0, Math.min(players - scrubCount, Math.floor(remainingAfterScrubs)));
+
+  for (let i = displayDeflectors.length - scrubCount; i < displayDeflectors.length; i += 1) {
+    if (i >= 0) displayDeflectors[i] = DEFLECTOR_TIERS[0].percent;
+  }
+
+  const epicStart = Math.max(0, displayDeflectors.length - scrubCount - epicCount);
+  const epicEnd = Math.max(0, displayDeflectors.length - scrubCount);
+  for (let i = epicStart; i < epicEnd; i += 1) {
+    displayDeflectors[i] = epicTier?.percent ?? displayDeflectors[i];
+  }
+
+  const unusedDeflector = getUnusedDeflectorPercent(players, displayDeflectors, playerConfigs);
+
+  const leggyCount = Math.max(0, players - scrubCount - epicCount);
+  const planParts = [];
+  if (highestTier) planParts.push(`${leggyCount}x ${highestTier.label}`);
+  if (epicCount > 0 && epicTier) planParts.push(`${epicCount}x ${epicTier.label}`);
+  if (scrubCount > 0) planParts.push(`${scrubCount}x quant-scrub`);
+  const recommendedPlan = planParts.join(' + ');
+
+  return {
+    displayDeflectors,
+    recommendedPlan,
+    unusedDeflector,
+    canQuantScrub: scrubCount > 0,
+  };
+}
+
+function computeAdjustedSummaries(options) {
+  const {
+    summaries,
+    displayDeflectors,
+    durationSeconds,
+    players,
+    assumptions,
+  } = options;
+
+  const adjustedSummaries = summaries.map((summary, index) => {
+    const deflectorPercent = displayDeflectors[index];
+    const btvRat = getBtvRate(deflectorPercent, summary.siabPercent ?? assumptions.siabPercent, assumptions.cxpMode);
+    const teamwork = getTeamwork(btvRat, players, durationSeconds / 86400, Math.min(players - 1, 20), 0, assumptions.cxpMode);
+    const cs = getCS(summary.contributionRatio, durationSeconds, summary.completionTime, teamwork);
+    return {
+      ...summary,
+      deflector: deflectorPercent,
+      teamwork,
+      cs,
+    };
+  });
+
+  const adjustedMaxCS = adjustedSummaries.reduce((max, entry) => Math.max(max, entry.cs), 0);
+  const adjustedMinCS = adjustedSummaries.reduce((min, entry) => Math.min(min, entry.cs), Infinity);
+  const adjustedMeanCS = adjustedSummaries.reduce((sum, entry) => sum + entry.cs, 0) / adjustedSummaries.length;
+
+  return {
+    adjustedSummaries,
+    adjustedMaxCS,
+    adjustedMinCS,
+    adjustedMeanCS,
+  };
+}
+
+function optimizeLateBoostTokensAfterDeflector(options) {
+  const {
+    players,
+    baseTokens,
+    altTokens,
+    baselineDeflectors,
+    playerConfigs,
+    durationSeconds,
+    targetEggs,
+    tokenTimerMinutes,
+    giftMinutes,
+    gg,
+    baseIHR,
+    cxpMode,
+    deflectorDisplay,
+    assumptions,
+  } = options;
+
+  const evaluateScenario = tokensByPlayer => {
+    const scenario = simulateScenario({
+      players,
+      playerDeflectors: baselineDeflectors,
+      playerConfigs,
+      durationSeconds,
+      targetEggs,
+      tokenTimerMinutes,
+      giftMinutes,
+      gg,
+      baseIHR,
+      tokensPerPlayer: tokensByPlayer,
+      cxpMode,
+    });
+
+    const adjusted = computeAdjustedSummaries({
+      summaries: scenario.summaries,
+      displayDeflectors: deflectorDisplay.displayDeflectors,
+      durationSeconds,
+      players,
+      assumptions,
+    });
+
+    return {
+      scenario,
+      score: adjusted.adjustedMaxCS,
+    };
+  };
+
+  const baseTokensByPlayer = Array.from({ length: players }, () => baseTokens);
+  let best = evaluateScenario(baseTokensByPlayer);
+  let bestCount = 0;
+  let bestTokensByPlayer = baseTokensByPlayer;
+
+  for (let count = 1; count <= players; count += 1) {
+    const tokensByPlayer = Array.from({ length: players }, (_, index) => {
+      const isLate = index >= players - count;
+      return isLate ? altTokens : baseTokens;
+    });
+    const current = evaluateScenario(tokensByPlayer);
+    if (current.score > best.score) {
+      best = current;
+      bestCount = count;
+      bestTokensByPlayer = tokensByPlayer;
+    } else {
+      break;
+    }
+  }
+
+  return {
+    bestCount,
+    baseCs: best.score,
+    bestCs: best.score,
+    tokensByPlayer: bestTokensByPlayer,
+    scenario: best.scenario,
+  };
 }
 
 function optimizeStones(elr, sr, totalSlots) {
@@ -829,77 +1045,6 @@ function calcBoostMulti(tokens) {
   }
 }
 
-function parseDurationToSeconds(input) {
-  const parsed = parseNumberAndUnit(input);
-  if (!parsed) return Number.NaN;
-  const { value, unit } = parsed;
-  const normalized = unit.toLowerCase();
-  switch (normalized) {
-    case 's':
-    case 'sec':
-    case 'secs':
-    case 'second':
-    case 'seconds':
-      return value;
-    case 'm':
-    case 'min':
-    case 'mins':
-    case 'minute':
-    case 'minutes':
-      return value * 60;
-    case 'h':
-    case 'hr':
-    case 'hrs':
-    case 'hour':
-    case 'hours':
-      return value * 3600;
-    case 'd':
-    case 'day':
-    case 'days':
-      return value * 86400;
-    case 'w':
-    case 'week':
-    case 'weeks':
-      return value * 7 * 86400;
-    case 'mo':
-    case 'mon':
-    case 'month':
-    case 'months':
-      return value * 30 * 86400;
-    default:
-      return Number.NaN;
-  }
-}
-
-function parseDurationToMinutes(input) {
-  const seconds = parseDurationToSeconds(input);
-  if (!Number.isFinite(seconds)) return Number.NaN;
-  return seconds / 60;
-}
-
-function parseEggAmount(input) {
-  const parsed = parseNumberAndUnit(input);
-  if (!parsed) return Number.NaN;
-  const { value, unit } = parsed;
-  if (!unit) return value;
-  if (unit === 'T' || unit === 't') return value * 1e12;
-  if (unit === 'q') return value * 1e15;
-  if (unit === 'Q') return value * 1e18;
-  return value;
-}
-
-function parseNumberAndUnit(input) {
-  if (!input) return null;
-  const trimmed = String(input).split('/')[0].trim();
-  const sanitized = trimmed.replaceAll(',', '');
-  const match = /^(\d*\.?\d+)\s*([a-zA-Z]+)?$/.exec(sanitized);
-  if (!match) return null;
-  return {
-    value: Number(match[1]),
-    unit: match[2] ?? '',
-  };
-}
-
 function findContractMatch(contracts, query) {
   if (!Array.isArray(contracts) || !query) return null;
   const trimmed = String(query).trim();
@@ -926,7 +1071,7 @@ function formatDeflectorDisplay(deflectorPercent) {
     return `${ArtifactEmoji.DEFLECTOR_4} L`;
   }
   if (deflectorPercent === DEFLECTOR_TIERS.at(-2)?.percent) {
-    return `${ArtifactEmoji.DEFLECTOR_4} E`;
+    return `${ArtifactEmoji.DEFLECTOR_4} E+`;
   }
   return `${ArtifactEmoji.DEFLECTOR_4} ${deflectorPercent}%`;
 }
@@ -938,123 +1083,37 @@ function buildPlayerTableLines(model, assumptions) {
     tokenTimerMinutes,
     giftMinutes,
     gg,
-    maxChickens,
-    elrPerChickenWithStones,
-    srWithStones,
     stoneLayout,
     requiredDeflector,
-    deflectorPlan,
-    baselineScenario,
     playerSummaries,
     tokensForPrediction,
     hasFixedTokens,
     tokensByPlayer,
     tokenUpgrade,
+    usePlayer1Siab,
+    deflectorDisplay,
   } = model;
 
-  const deflectorPlanText = deflectorPlan.tiers
-    .map(tier => `${tier.count}x ${tier.tier.label} (${tier.tier.percent}%)`)
-    .join(', ');
   const requiredOtherDeflector = Math.ceil(requiredDeflector);
-  const highestTier = DEFLECTOR_TIERS.at(-1);
-  const nextTier = DEFLECTOR_TIERS.at(-2);
-  const canAllNextTier = canUseAllTier(players, nextTier, requiredOtherDeflector);
-  const canAllHighest = canUseAllTier(players, highestTier, requiredOtherDeflector);
-  const canSwapOne = canUseSwapMix(players, highestTier, nextTier, requiredOtherDeflector);
-  const baselineUnusedDeflector = getUnusedDeflectorPercent(
-    players,
-    baselineScenario.playerDeflectors,
-    maxChickens,
-    elrPerChickenWithStones,
-    srWithStones,
-  );
-  const percentDrop = highestTier && nextTier ? highestTier.percent - nextTier.percent : 0;
-  const epicSlackCount = canAllHighest && percentDrop > 0
-    ? Math.min(players, Math.max(0, Math.floor(baselineUnusedDeflector / percentDrop)))
-    : 0;
-  const baseTier = canAllNextTier ? nextTier : highestTier;
-  let recommendedPlan = deflectorPlanText;
-  if (canAllNextTier && nextTier) {
-    recommendedPlan = `${players}x ${nextTier.label}`;
-  } else if (epicSlackCount > 0 && highestTier && nextTier) {
-    recommendedPlan = `${players - epicSlackCount}x ${highestTier.label} + ${epicSlackCount}x ${nextTier.label}`;
-  } else if (canSwapOne && highestTier && nextTier) {
-    recommendedPlan = `${players - 1}x ${highestTier.label} + 1x ${nextTier.label}`;
-  } else if (canAllHighest && highestTier) {
-    recommendedPlan = `${players}x ${highestTier.label}`;
-  }
-
-  const displayDeflectors = playerSummaries.summaries.map(summary => summary.deflector);
-  if (canAllNextTier && nextTier) {
-    for (let i = 0; i < displayDeflectors.length; i += 1) {
-      displayDeflectors[i] = nextTier.percent;
-    }
-  } else if (epicSlackCount > 0 && highestTier && nextTier) {
-    for (let i = displayDeflectors.length - epicSlackCount; i < displayDeflectors.length; i += 1) {
-      if (i >= 0) displayDeflectors[i] = nextTier.percent;
-    }
-  } else if (canSwapOne && highestTier && nextTier && displayDeflectors.length > 0) {
-    displayDeflectors[displayDeflectors.length - 1] = nextTier.percent;
-  } else if (canAllHighest && highestTier) {
-    for (let i = 0; i < displayDeflectors.length; i += 1) {
-      displayDeflectors[i] = highestTier.percent;
-    }
-  }
-
-  const canQuantScrub = baselineUnusedDeflector > 25 && (canAllHighest || canAllNextTier);
-  let scrubCount = 0;
-  let scrubBaseTier = baseTier;
-  if (canQuantScrub) {
-    const highestScrubs = canAllHighest && highestTier
-      ? getMaxQuantScrubs(players, highestTier.percent, requiredOtherDeflector)
-      : 0;
-    const nextScrubs = canAllNextTier && nextTier
-      ? getMaxQuantScrubs(players, nextTier.percent, requiredOtherDeflector)
-      : 0;
-
-    if (highestScrubs >= nextScrubs && highestTier) {
-      scrubCount = highestScrubs;
-      scrubBaseTier = highestTier;
-    } else if (nextTier) {
-      scrubCount = nextScrubs;
-      scrubBaseTier = nextTier;
-    }
-
-    if (scrubCount > 0 && scrubBaseTier) {
-      recommendedPlan = `${players - scrubCount}x ${scrubBaseTier.label} + ${scrubCount}x quant-scrub`;
-      for (let i = 0; i < displayDeflectors.length; i += 1) {
-        displayDeflectors[i] = scrubBaseTier.percent;
-      }
-      for (let i = displayDeflectors.length - scrubCount; i < displayDeflectors.length; i += 1) {
-        if (i >= 0) displayDeflectors[i] = DEFLECTOR_TIERS[0].percent;
-      }
-    }
-  }
-
-  const unusedDeflector = getUnusedDeflectorPercent(
-    players,
+  const {
     displayDeflectors,
-    maxChickens,
-    elrPerChickenWithStones,
-    srWithStones,
-  );
+    recommendedPlan,
+    unusedDeflector,
+    canQuantScrub,
+  } = deflectorDisplay;
 
-  const adjustedSummaries = playerSummaries.summaries.map((summary, index) => {
-    const deflectorPercent = displayDeflectors[index];
-    const btvRat = getBtvRate(deflectorPercent, assumptions.siabPercent, assumptions.cxpMode);
-    const teamwork = getTeamwork(btvRat, players, durationSeconds / 86400, Math.min(players - 1, 20), 0, assumptions.cxpMode);
-    const cs = getCS(summary.contributionRatio, durationSeconds, summary.completionTime, teamwork);
-    return {
-      ...summary,
-      deflector: deflectorPercent,
-      teamwork,
-      cs,
-    };
+  const {
+    adjustedSummaries,
+    adjustedMaxCS,
+    adjustedMinCS,
+    adjustedMeanCS,
+  } = computeAdjustedSummaries({
+    summaries: playerSummaries.summaries,
+    displayDeflectors,
+    durationSeconds,
+    players,
+    assumptions,
   });
-
-  const adjustedMaxCS = adjustedSummaries.reduce((max, entry) => Math.max(max, entry.cs), 0);
-  const adjustedMinCS = adjustedSummaries.reduce((min, entry) => Math.min(min, entry.cs), Infinity);
-  const adjustedMeanCS = adjustedSummaries.reduce((sum, entry) => sum + entry.cs, 0) / adjustedSummaries.length;
 
   const tokenEmoji = ArtifactEmoji.TOKEN;
 
@@ -1075,19 +1134,25 @@ function buildPlayerTableLines(model, assumptions) {
     `Token timer: ${formatMinutes(tokenTimerMinutes)} | gift speed: ${formatMinutes(giftMinutes)} | GG: ${gg ? 'on' : 'off'}`,
     `Tokens to boost: ${tokenEmoji} ${tokensForPrediction}${hasFixedTokens ? '' : ' (fastest max-habs)'}${lateBoostText}`,
     `Deflector needed (other total): ~${requiredOtherDeflector}% | Unused: ~${Math.max(0, Math.floor(unusedDeflector))}%`,
+    `Player 1 SIAB: ${usePlayer1Siab ? 'needed' : 'not needed'}`,
     `Recommended: ${recommendedPlan}${canQuantScrub ? ' (quant-scrub OK)' : ''}`,
     `CS: max ${Math.round(adjustedMaxCS)} | mean ${Math.round(adjustedMeanCS)} | min ${Math.round(adjustedMinCS)}`,
     '',
-    'player | def | tach | quant | tokens | cs',
+    '`player  |siab|def|tach|quant|tokens| cs`',
     ...displayRows.map(row => {
       const { summary, deflector, tokens } = row;
       const isScrub = deflector === DEFLECTOR_TIERS[0].percent;
-      const extraTach = isScrub && stoneLayout.numTach > stoneLayout.numQuant ? 1 : 0;
-      const extraQuant = isScrub && stoneLayout.numQuant >= stoneLayout.numTach ? 1 : 0;
-      const tachText = `${ArtifactEmoji.TACHYON_4} ${stoneLayout.numTach + extraTach}`;
-      const quantText = `${ArtifactEmoji.QUANTUM_4} ${stoneLayout.numQuant + extraQuant}`;
+      const baseTach = summary.stoneLayout?.numTach ?? stoneLayout.numTach;
+      const baseQuant = summary.stoneLayout?.numQuant ?? stoneLayout.numQuant;
+      const extraTach = isScrub && baseTach > baseQuant ? 1 : 0;
+      const extraQuant = isScrub && baseQuant >= baseTach ? 1 : 0;
+      const tachText = `${ArtifactEmoji.TACHYON_4} ${baseTach + extraTach}`;
+      const quantText = `${ArtifactEmoji.QUANTUM_4} ${baseQuant + extraQuant}`;
       const tokenText = `${tokenEmoji} ${tokens}`;
-      return `Player ${summary.index} | ${formatDeflectorDisplay(deflector)} | ${tachText} | ${quantText} | ${tokenText} | ${Math.round(summary.cs)}`;
+      const siabText = summary.siabPercent > 0 ? ArtifactEmoji.SIAB_4 : '---';
+      const playerPad = players >= 10 && summary.index < 10 ? ' ' : '';
+      const playerText = `\`player${summary.index}${playerPad}\``;
+      return `${playerText} | ${siabText} | ${formatDeflectorDisplay(deflector)} | ${tachText} | ${quantText} | ${tokenText} | ${Math.round(summary.cs)}`;
     }),
   ];
 
