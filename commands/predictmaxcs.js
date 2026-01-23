@@ -53,6 +53,14 @@ export const data = new SlashCommandBuilder()
       .setDescription('Token gift speed per player (minutes)')
       .setRequired(true)
   )
+  .addNumberOption(option =>
+    option
+      .setName('avg_te')
+      .setDescription('Average TE (0-490). Default: 100')
+      .setMinValue(0)
+      .setMaxValue(490)
+      .setRequired(false)
+  )
   .addBooleanOption(option =>
     option
       .setName('gg')
@@ -63,6 +71,7 @@ export const data = new SlashCommandBuilder()
 export async function execute(interaction) {
   const contractInput = interaction.options.getString('contract');
   const tokenSpeedInput = interaction.options.getNumber('token_speed');
+  const avgTeInput = interaction.options.getNumber('avg_te');
   const gg = interaction.options.getBoolean('gg') ?? false;
 
   let contractMatch = null;
@@ -96,7 +105,12 @@ export async function execute(interaction) {
     return interaction.reply(createTextComponentMessage('Invalid token speed input.', { flags: 64 }));
   }
 
-  const assumptions = getAssumptions();
+  const avgTe = Number.isFinite(avgTeInput) ? avgTeInput : 100;
+  if (!Number.isFinite(avgTe) || avgTe < 0 || avgTe > 490) {
+    return interaction.reply(createTextComponentMessage('Average TE must be between 0 and 490.', { flags: 64 }));
+  }
+
+  const assumptions = getAssumptions(avgTe);
   const model = buildModel(players, durationSeconds, targetEggs, tokenTimerMinutes, giftMinutes, gg, assumptions);
   const contractLabel = contractMatch?.name || contractMatch?.id || contractInput;
   const outputLines = buildPlayerTableLines(model, assumptions);
@@ -116,9 +130,9 @@ export async function execute(interaction) {
   }
 }
 
-function getAssumptions() {
+function getAssumptions(averageTe = 100) {
   return {
-    te: 100,
+    te: averageTe,
     tokensPerPlayer: 6,
     swapBonus: false,
     cxpMode: true,
@@ -226,6 +240,7 @@ function buildModel(players, durationSeconds, targetEggs, tokenTimerMinutes, gif
   const siabVariant = buildVariant(true);
   const selectedVariant = siabVariant.score > baseVariant.score ? siabVariant : baseVariant;
   const usePlayer1Siab = selectedVariant.usePlayer1Siab;
+  const siabScoreDelta = Math.round((siabVariant.score ?? 0) - (baseVariant.score ?? 0));
   const selectedPlayerConfigs = selectedVariant.playerConfigs;
   const requiredDeflector = selectedVariant.requiredDeflector;
   const deflectorDisplay = selectedVariant.deflectorDisplay;
@@ -261,6 +276,7 @@ function buildModel(players, durationSeconds, targetEggs, tokenTimerMinutes, gif
     tokensByPlayer: finalTokensByPlayer,
     tokenUpgrade,
     usePlayer1Siab,
+    siabScoreDelta,
     playerConfigs: selectedPlayerConfigs,
     deflectorDisplay,
   };
@@ -923,6 +939,7 @@ function optimizeLateBoostTokensAfterDeflector(options) {
 
     return {
       scenario,
+      adjusted,
       score: adjusted.adjustedMaxCS,
     };
   };
@@ -947,12 +964,39 @@ function optimizeLateBoostTokensAfterDeflector(options) {
     }
   }
 
+  let earlyBest = best;
+  let earlyBestCount = 0;
+  let earlyBestTokensByPlayer = bestTokensByPlayer;
+  const earlyTokens = 4;
+
+  if (players > 1 && baseTokens > earlyTokens) {
+    for (let count = 1; count <= players - 1; count += 1) {
+      const tokensByPlayer = bestTokensByPlayer.map((tokens, index) => {
+        if (index === 0) return tokens;
+        return index <= count ? earlyTokens : tokens;
+      });
+
+      const current = evaluateScenario(tokensByPlayer);
+      const currentP1Score = current.adjusted.adjustedSummaries?.[0]?.cs ?? 0;
+      const bestP1Score = earlyBest.adjusted.adjustedSummaries?.[0]?.cs ?? 0;
+
+      if (currentP1Score > bestP1Score) {
+        earlyBest = current;
+        earlyBestCount = count;
+        earlyBestTokensByPlayer = tokensByPlayer;
+      } else {
+        break;
+      }
+    }
+  }
+
   return {
     bestCount,
-    baseCs: best.score,
-    bestCs: best.score,
-    tokensByPlayer: bestTokensByPlayer,
-    scenario: best.scenario,
+    earlyBestCount,
+    baseCs: earlyBest.score,
+    bestCs: earlyBest.score,
+    tokensByPlayer: earlyBestTokensByPlayer,
+    scenario: earlyBest.scenario,
   };
 }
 
@@ -1084,6 +1128,7 @@ function buildPlayerTableLines(model, assumptions) {
     giftMinutes,
     gg,
     stoneLayout,
+    baseIHR,
     requiredDeflector,
     playerSummaries,
     tokensForPrediction,
@@ -1091,7 +1136,9 @@ function buildPlayerTableLines(model, assumptions) {
     tokensByPlayer,
     tokenUpgrade,
     usePlayer1Siab,
+    siabScoreDelta,
     deflectorDisplay,
+    playerConfigs,
   } = model;
 
   const requiredOtherDeflector = Math.ceil(requiredDeflector);
@@ -1132,13 +1179,14 @@ function buildPlayerTableLines(model, assumptions) {
 
   const lines = [
     `Token timer: ${formatMinutes(tokenTimerMinutes)} | gift speed: ${formatMinutes(giftMinutes)} | GG: ${gg ? 'on' : 'off'}`,
+    `Average TE: ${assumptions.te}`,
     `Tokens to boost: ${tokenEmoji} ${tokensForPrediction}${hasFixedTokens ? '' : ' (fastest max-habs)'}${lateBoostText}`,
     `Deflector needed (other total): ~${requiredOtherDeflector}% | Unused: ~${Math.max(0, Math.floor(unusedDeflector))}%`,
-    `Player 1 SIAB: ${usePlayer1Siab ? 'needed' : 'not needed'}`,
+    `Player 1 SIAB: ${usePlayer1Siab ? `needed (~${siabScoreDelta >= 0 ? '+' : ''}${siabScoreDelta} CS vs no SIAB)` : 'not needed'}`,
     `Recommended: ${recommendedPlan}${canQuantScrub ? ' (quant-scrub OK)' : ''}`,
     `CS: max ${Math.round(adjustedMaxCS)} | mean ${Math.round(adjustedMeanCS)} | min ${Math.round(adjustedMinCS)}`,
     '',
-    '`player  |siab|def|tach|quant|tokens| cs`',
+    '`player  (cr b)|siab|def|tach|quant|tokens| cs`',
     ...displayRows.map(row => {
       const { summary, deflector, tokens } = row;
       const isScrub = deflector === DEFLECTOR_TIERS[0].percent;
@@ -1151,7 +1199,16 @@ function buildPlayerTableLines(model, assumptions) {
       const tokenText = `${tokenEmoji} ${tokens}`;
       const siabText = summary.siabPercent > 0 ? ArtifactEmoji.SIAB_4 : '---';
       const playerPad = players >= 10 && summary.index < 10 ? ' ' : '';
-      const playerText = `\`player${summary.index}${playerPad}\``;
+      const boostMulti = calcBoostMulti(Number.isFinite(tokens) ? tokens : tokensForPrediction);
+      const maxHabs = playerConfigs?.[summary.index - 1]?.maxChickens ?? 0;
+      const crRequestPop = getChickenRunAskPop({
+        maxChickens: maxHabs,
+        baseIHR,
+        boostMulti,
+        players,
+      });
+      const crBillions = formatBillions(crRequestPop);
+      const playerText = `\`player${summary.index}${playerPad} (${crBillions})\``;
       return `${playerText} | ${siabText} | ${formatDeflectorDisplay(deflector)} | ${tachText} | ${quantText} | ${tokenText} | ${Math.round(summary.cs)}`;
     }),
   ];
@@ -1171,6 +1228,29 @@ function formatMinutes(minutes) {
   if (minutes >= 60 * 24) return `${(minutes / 1440).toFixed(2)}d`;
   if (minutes >= 60) return `${(minutes / 60).toFixed(2)}h`;
   return `${minutes.toFixed(1)}m`;
+}
+
+function formatBillions(value) {
+  if (!Number.isFinite(value)) return 'N/A';
+  return (value / 1e9).toFixed(1);
+}
+
+function getChickenRunAskPop(options) {
+  const {
+    maxChickens,
+    baseIHR,
+    boostMulti,
+    players,
+  } = options;
+
+  if (!Number.isFinite(maxChickens) || maxChickens <= 0) return 0;
+  const safePlayers = Number.isFinite(players) ? players : 0;
+  const safeBoost = Number.isFinite(boostMulti) && boostMulti > 0 ? boostMulti : 1;
+  const safeIHR = Number.isFinite(baseIHR) && baseIHR > 0 ? baseIHR : 0;
+  const offlineLoss = safeIHR * 12 * safeBoost;
+  const denominator = 1 + 0.05 * safePlayers;
+  if (denominator <= 0) return 0;
+  return Math.max(0, (maxChickens - offlineLoss) / denominator);
 }
 
 function secondsToHuman(seconds) {
