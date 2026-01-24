@@ -28,6 +28,8 @@ for (const file of commandFiles) {
     data: commandModule.data,
     execute: commandModule.execute,
     autocomplete: commandModule.autocomplete,
+    handleComponentInteraction: commandModule.handleComponentInteraction,
+    handleModalSubmit: commandModule.handleModalSubmit,
   };
   client.commands.set(command.data.name, command);
 }
@@ -68,26 +70,75 @@ function formatCommandOptions(optionData) {
 }
 
 client.on(Events.InteractionCreate, async interaction => {
-  // Handle autocomplete
-  if (interaction.isAutocomplete()) {
-    const command = client.commands.get(interaction.commandName);
-    if (command && typeof command.autocomplete === 'function') {
-      try {
-        await command.autocomplete(interaction);
-      } catch (error) {
-        console.error('Autocomplete error:', error);
+  if (await handleComponentInteraction(interaction, client)) return;
+  if (await handleModalInteraction(interaction, client)) return;
+  if (await handleAutocompleteInteraction(interaction, client)) return;
+  await handleChatInputInteraction(interaction, client);
+});
+
+async function handleComponentInteraction(interaction, clientInstance) {
+  if (!interaction.isMessageComponent()) return false;
+  const commandName = interaction.customId?.split(':')?.[0];
+  const command = clientInstance.commands.get(commandName);
+  if (command && typeof command.handleComponentInteraction === 'function') {
+    try {
+      const handled = await command.handleComponentInteraction(interaction);
+      return handled === true;
+    } catch (error) {
+      console.error('Component interaction error:', error);
+      if (interaction.deferred || interaction.replied) {
+        await interaction.followUp({
+          content: 'There was an error handling this interaction.',
+          flags: 64,
+        });
+      } else {
+        await interaction.reply({
+          content: 'There was an error handling this interaction.',
+          flags: 64,
+        });
       }
     }
-    return;
   }
+  return false;
+}
 
-  // Handle chat input commands
+async function handleModalInteraction(interaction, clientInstance) {
+  if (!interaction.isModalSubmit()) return false;
+  const commandName = interaction.customId?.split(':')?.[0];
+  const command = clientInstance.commands.get(commandName);
+  if (command && typeof command.handleModalSubmit === 'function') {
+    try {
+      await command.handleModalSubmit(interaction);
+    } catch (error) {
+      console.error('Modal submit error:', error);
+      await interaction.reply({
+        content: 'There was an error handling this form.',
+        flags: 64,
+      });
+    }
+  }
+  return true;
+}
+
+async function handleAutocompleteInteraction(interaction, clientInstance) {
+  if (!interaction.isAutocomplete()) return false;
+  const command = clientInstance.commands.get(interaction.commandName);
+  if (command && typeof command.autocomplete === 'function') {
+    try {
+      await command.autocomplete(interaction);
+    } catch (error) {
+      console.error('Autocomplete error:', error);
+    }
+  }
+  return true;
+}
+
+async function handleChatInputInteraction(interaction, clientInstance) {
   if (!interaction.isChatInputCommand()) return;
 
-  const command = client.commands.get(interaction.commandName);
+  const command = clientInstance.commands.get(interaction.commandName);
   if (!command) return;
 
-  // Log who invoked the command and which command it was (include simple options summary)
   try {
     const user = interaction.user ?? { username: 'unknown', id: 'unknown' };
     const userTag = user.tag ?? user.username;
@@ -118,10 +169,10 @@ client.on(Events.InteractionCreate, async interaction => {
     console.error(error);
     await interaction.reply({
       content: 'There was an error executing this command.',
-      flags: 64
-    });  
+      flags: 64,
+    });
   }
-});
+}
 
 
 

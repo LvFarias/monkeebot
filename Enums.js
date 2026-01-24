@@ -44,7 +44,27 @@ const ArtifactEmoji = {
     TOKEN: `<:Token:1463686148353294409>`,
     QUANTUM_4: `<:Afx_quantum_stone_4:1463684184621977762>`,
     TACHYON_4: `<:Afx_tachyon_stone_4:1463684182352986184>`,
+
+    DEFLECTOR_1: `<:Afx_tachyon_deflector_1:1464412573490479275>`,
+    DEFLECTOR_2: `<:Afx_tachyon_deflector_2:1464412571124891658>`,
+    DEFLECTOR_3: `<:Afx_tachyon_deflector_3:1464412569048715316>`,
     DEFLECTOR_4: `<:Afx_tachyon_deflector_4:1463684180104970323>`,
+
+    METRONOME_1: `<:Afx_quantum_metronome_1:1464412580586979460>`,
+    METRONOME_2: `<:Afx_quantum_metronome_2:1464412579358310513>`,
+    METRONOME_3: `<:Afx_quantum_metronome_3:1464412577907081247>`,
+    METRONOME_4: `<:Afx_quantum_metronome_4:1464412575067406366>`,
+
+    COMPASS_1: `<:Afx_interstellar_compass_1:1464412586811588608>`,
+    COMPASS_2: `<:Afx_interstellar_compass_2:1464412585154707619>`,
+    COMPASS_3: `<:Afx_interstellar_compass_3:1464412583581843590>`,
+    COMPASS_4: `<:Afx_interstellar_compass_4:1464412582432473332>`,
+
+    GUSSET_1: `<:Afx_ornate_gusset_1:1464412594549817416>`,
+    GUSSET_2: `<:Afx_ornate_gusset_2:1464412593086271528>`,
+    GUSSET_3: `<:Afx_ornate_gusset_3:1464412591823650990>`,
+    GUSSET_4: `<:Afx_ornate_gusset_4:1464412589575377223>`,
+
     NEO_MEDALLION_4: `<:Afx_neo_medallion_4:1463685017182933073>`,
     SIAB_4: `<:Afx_ship_in_a_bottle_4:1463866981991055565>`
 }
