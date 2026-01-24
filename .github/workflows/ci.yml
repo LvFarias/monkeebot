@@ -97,8 +97,8 @@ jobs:
             --fail \
             --silent \
             --show-error \
-            --connect-timeout 15 \
-            --max-time 15 \
+            --connect-timeout 30 \
+            --max-time 30 \
             -X POST "${{ secrets.PORTAINER_WEBHOOK }}"
           EXIT_CODE=$?
 
