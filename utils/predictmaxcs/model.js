@@ -217,6 +217,7 @@ export function buildPlayerConfigs(options) {
     const elrPerPlayer = playerMaxChickens * baseELR;
     const elrForStones = elrPerPlayer * (1 + baselineOtherDefl / 100);
     const stoneLayout = optimizeStones(elrForStones, baseShip, playerSlots);
+    const playerSiabPercent = isPlayer1 ? baseSiabPercent : 0;
 
     return {
       maxChickens: playerMaxChickens,
@@ -225,8 +226,8 @@ export function buildPlayerConfigs(options) {
       srNoStones: baseShip,
       srWithStones: baseShip * Math.pow(1.05, stoneLayout.numQuant),
       stoneLayout,
-      siabPercent: baseSiabPercent,
-      siabAlwaysOn: isPlayer1 && usePlayer1Siab && baseSiabPercent > 0,
+      siabPercent: playerSiabPercent,
+      siabAlwaysOn: isPlayer1 && playerSiabPercent > 0,
     };
   });
 }
