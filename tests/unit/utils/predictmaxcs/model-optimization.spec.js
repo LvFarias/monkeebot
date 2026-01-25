@@ -6,6 +6,9 @@ vi.mock('../../../../utils/predictmaxcs/simulation.js', () => {
     return { summaries: [{ cs: score }] };
   });
 
+  const simulateScenariosParallel = vi.fn(async (scenarios) =>
+    scenarios.map((scenario) => simulateScenario(scenario)));
+
   const computeAdjustedSummaries = vi.fn(({ summaries }) => ({
     adjustedSummaries: summaries,
     adjustedMaxCS: summaries[0]?.cs ?? 0,
@@ -13,7 +16,7 @@ vi.mock('../../../../utils/predictmaxcs/simulation.js', () => {
     adjustedMeanCS: summaries[0]?.cs ?? 0,
   }));
 
-  return { simulateScenario, computeAdjustedSummaries };
+  return { simulateScenario, simulateScenariosParallel, computeAdjustedSummaries };
 });
 
 const loadModel = async () => import('../../../../utils/predictmaxcs/model.js');
@@ -74,7 +77,7 @@ describe('utils/predictmaxcs/model optimization', () => {
   it('optimizes after deflector with late tokens', async () => {
     const { optimizeLateBoostTokensAfterDeflector } = await loadModel();
 
-    const result = optimizeLateBoostTokensAfterDeflector({
+    const result = await optimizeLateBoostTokensAfterDeflector({
       players: 1,
       baseTokens: 6,
       altTokens: 8,

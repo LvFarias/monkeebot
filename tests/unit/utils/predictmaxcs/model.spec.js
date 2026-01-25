@@ -54,9 +54,9 @@ describe('utils/predictmaxcs/model', () => {
     expect(getIhrStoneSlots()).toBeGreaterThan(0);
   });
 
-  it('builds a model with minimal inputs', () => {
+  it('builds a model with minimal inputs', async () => {
     const assumptions = getAssumptions(100);
-    const model = buildModel({
+    const model = await buildModel({
       players: 2,
       durationSeconds: 60,
       targetEggs: 1e6,

@@ -7,6 +7,7 @@ vi.mock('../../../services/contractService.js', () => ({
 
 vi.mock('../../../services/discord.js', () => ({
   chunkContent: vi.fn((lines) => (Array.isArray(lines) ? [lines.join('\n'), 'extra'] : [String(lines)])),
+  createDiscordProgressReporter: vi.fn(() => vi.fn(async () => {})),
   createTextComponentMessage: vi.fn((content, options) => ({ content, ...options })),
 }));
 
@@ -19,6 +20,7 @@ vi.mock('../../../utils/predictmaxcs/display.js', () => ({
 vi.mock('../../../utils/predictmaxcs/model.js', () => ({
   buildModel: vi.fn(() => ({ mock: true })),
   getAssumptions: vi.fn(() => ({ te: 100 })),
+  TOKEN_CANDIDATES: [0, 1, 2, 3, 4, 5, 6, 8],
 }));
 
 import { execute, autocomplete } from '../../../commands/predictmaxcs.js';

@@ -7,7 +7,9 @@ vi.mock('../../../services/contractService.js', () => ({
 
 vi.mock('../../../services/discord.js', () => ({
   chunkContent: vi.fn((lines) => (Array.isArray(lines) ? [lines.join('\n')] : [String(lines)])),
+  createDiscordProgressReporter: vi.fn(() => vi.fn(async () => {})),
   createTextComponentMessage: vi.fn((content, options) => ({ content, ...options })),
+  startDeferredReplyHeartbeat: vi.fn(() => () => {}),
 }));
 
 vi.mock('../../../utils/predictcs/sandbox.js', () => ({
@@ -287,6 +289,7 @@ describe('commands/predictcs', () => {
       isMessageComponent: () => true,
       isStringSelectMenu: () => false,
       isButton: () => true,
+      deferUpdate: vi.fn(async () => {}),
       reply: vi.fn(async () => {}),
       followUp: vi.fn(async () => {}),
       deferred: false,

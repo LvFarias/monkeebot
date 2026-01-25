@@ -26,7 +26,7 @@ import {
 } from '../../../../utils/predictcs/artifacts.js';
 
 describe('utils/predictcs/model', () => {
-  it('builds a predict CS model', () => {
+  it('builds a predict CS model', async () => {
     const playerArtifacts = [
       {
         deflector: parseDeflector('T4L Defl.'),
@@ -60,7 +60,7 @@ describe('utils/predictcs/model', () => {
     const playerTe = [120, 80];
     const boostOrder = buildBoostOrder('te', playerTe);
 
-    const model = buildPredictCsModel({
+    const model = await buildPredictCsModel({
       players: 2,
       durationSeconds: 120,
       targetEggs: 1e9,

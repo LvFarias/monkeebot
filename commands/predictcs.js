@@ -9,7 +9,12 @@ import {
   TextInputBuilder,
   TextInputStyle,
 } from 'discord.js';
-import { chunkContent, createTextComponentMessage } from '../services/discord.js';
+import {
+  chunkContent,
+  createDiscordProgressReporter,
+  createTextComponentMessage,
+  startDeferredReplyHeartbeat,
+} from '../services/discord.js';
 import { fetchContractSummaries } from '../services/contractService.js';
 import { findContractMatch } from '../utils/predictmaxcs/contracts.js';
 import { buildPlayerTableLines, formatEggs, secondsToHuman } from '../utils/predictmaxcs/display.js';
@@ -41,6 +46,7 @@ import {
   parseTe,
 } from '../utils/predictcs/artifacts.js';
 import { buildBoostOrder, buildPredictCsModel } from '../utils/predictcs/model.js';
+import { TOKEN_CANDIDATES } from '../utils/predictmaxcs/model.js';
 import { parseSandboxUrl } from '../utils/predictcs/sandbox.js';
 
 const sessions = new Map();
@@ -123,6 +129,7 @@ export async function execute(interaction) {
   }
 
   await interaction.deferReply();
+  const stopHeartbeat = startDeferredReplyHeartbeat(interaction, { prefix: 'Preparing PredictCS' });
 
   const sessionId = interaction.id;
   sessions.set(sessionId, {
@@ -158,6 +165,7 @@ export async function execute(interaction) {
   });
 
   const message = buildModeSelectionMessage(sessionId, sessions.get(sessionId));
+  stopHeartbeat();
   await interaction.editReply(message);
 }
 
@@ -204,14 +212,12 @@ async function handlePredictCsModeInteraction({ interaction, session, context })
     session.playerStep[0] = 'artifacts';
     const message = buildPlayerSelectionMessage(sessionId, 0, session, { includeFlags: false });
     await interaction.update(message);
-    return;
   }
 
   if (mode === 'sandbox') {
     session.mode = 'sandbox';
     const modal = buildSandboxModal(sessionId);
     await interaction.showModal(modal);
-    return;
   }
 }
 
@@ -235,13 +241,11 @@ async function handlePredictCsContractInteraction({ interaction, session, contex
       targetEggs: session.targetEggs,
       tokenTimerMinutes: session.tokenTimerMinutes,
     });
-    return;
   }
 
   if (mode === 'sandbox') {
     const override = resolveSandboxContractOverride(session);
     await runPredictCsSandbox(interaction, session, reminder, override);
-    return;
   }
 }
 
@@ -268,12 +272,10 @@ async function handlePredictCsPlayerInteraction({ interaction, session, context 
 
   if (action === 'select' && interaction.isStringSelectMenu()) {
     await handlePredictCsSelect({ interaction, sessionId, playerIndex, field, session });
-    return;
   }
 
   if (action === 'next' && interaction.isButton()) {
     await handlePredictCsNext({ interaction, sessionId, playerIndex, session });
-    return;
   }
 }
 
@@ -438,8 +440,39 @@ async function handlePredictCsNext({ interaction, sessionId, playerIndex, sessio
     return;
   }
 
+  if (!interaction.deferred && !interaction.replied) {
+    await interaction.deferUpdate();
+  }
+
+  const totalSteps = 1 + session.players * TOKEN_CANDIDATES.length * 2;
+  const progressReporter = createDiscordProgressReporter(interaction, {
+    prefix: 'PredictCS',
+    width: 20,
+    intervalMs: 1200,
+  });
+
+  const progress = {
+    total: totalSteps,
+    completed: 0,
+    async update({ completed, active, queued } = {}) {
+      if (Number.isFinite(completed)) {
+        this.completed = Math.min(this.total, completed);
+      }
+      const activeCount = Number.isFinite(active) ? active : 0;
+      const queuedCount = Math.max(0, this.total - this.completed - activeCount);
+      await progressReporter({
+        completed: this.completed,
+        total: this.total,
+        active: activeCount,
+        queued: queuedCount,
+      });
+    },
+  };
+
+  await progress.update({ completed: 0, active: 0, queued: totalSteps });
+
   const boostOrder = buildBoostOrder(session.boostOrderMode, session.playerTe);
-  const model = buildPredictCsModel({
+  const model = await buildPredictCsModel({
     players: session.players,
     durationSeconds: session.durationSeconds,
     targetEggs: session.targetEggs,
@@ -453,6 +486,7 @@ async function handlePredictCsNext({ interaction, sessionId, playerIndex, sessio
     siabEnabled: session.siabEnabled,
     modifierType: session.modifierType,
     modifierValue: session.modifierValue,
+    progress,
   });
 
   const avgTe = session.playerTe.reduce((sum, value) => sum + value, 0) / Math.max(1, session.playerTe.length);
@@ -475,8 +509,8 @@ async function handlePredictCsNext({ interaction, sessionId, playerIndex, sessio
     .setDescription(chunk));
 
   const [first, ...rest] = embeds;
-  await interaction.update(buildPlainComponentMessage('PredictCS complete. See results below.', { components: [] }));
-  await interaction.followUp({ embeds: [first] });
+  await progress.update({ completed: totalSteps, active: 0, queued: 0 });
+  await interaction.editReply({ content: '', embeds: [first] });
   for (const embed of rest) {
     await interaction.followUp({ embeds: [embed] });
   }
@@ -785,8 +819,47 @@ async function runPredictCsSandbox(interaction, session, sandboxData, contractOv
   const playerIhrArtifacts = sandboxData.playerIhrArtifacts;
   const playerTe = sandboxData.playerTe;
 
+  if (!interaction.deferred && !interaction.replied) {
+    if (interaction.isMessageComponent()) {
+      await interaction.deferUpdate();
+    } else {
+      await interaction.deferReply();
+    }
+  }
+
+  if (interaction.deferred || interaction.replied) {
+    await interaction.editReply(buildPlainComponentMessage('Preparing PredictCS...', { components: [] }));
+  }
+
+  const totalSteps = 1 + players * TOKEN_CANDIDATES.length * 2;
+  const progressReporter = createDiscordProgressReporter(interaction, {
+    prefix: 'PredictCS',
+    width: 20,
+    intervalMs: 1200,
+  });
+
+  const progress = {
+    total: totalSteps,
+    completed: 0,
+    async update({ completed, active, queued } = {}) {
+      if (Number.isFinite(completed)) {
+        this.completed = Math.min(this.total, completed);
+      }
+      const activeCount = Number.isFinite(active) ? active : 0;
+      const queuedCount = Math.max(0, this.total - this.completed - activeCount);
+      await progressReporter({
+        completed: this.completed,
+        total: this.total,
+        active: activeCount,
+        queued: queuedCount,
+      });
+    },
+  };
+
+  await progress.update({ completed: 0, active: 0, queued: totalSteps });
+
   const boostOrder = buildBoostOrder(session.boostOrderMode, playerTe);
-  const model = buildPredictCsModel({
+  const model = await buildPredictCsModel({
     players,
     durationSeconds: contractOverride.durationSeconds,
     targetEggs: contractOverride.targetEggs,
@@ -800,6 +873,7 @@ async function runPredictCsSandbox(interaction, session, sandboxData, contractOv
     siabEnabled: session.siabEnabled,
     modifierType: contractOverride.modifierType ?? null,
     modifierValue: contractOverride.modifierValue ?? null,
+    progress,
   });
 
   const avgTe = playerTe.reduce((sum, value) => sum + value, 0) / Math.max(1, playerTe.length);
@@ -822,9 +896,9 @@ async function runPredictCsSandbox(interaction, session, sandboxData, contractOv
     .setDescription(chunk));
 
   const [first, ...rest] = embeds;
-
+  await progress.update({ completed: totalSteps, active: 0, queued: 0 });
   if (interaction.deferred || interaction.replied) {
-    await interaction.followUp({ embeds: [first] });
+    await interaction.editReply({ content: '', embeds: [first] });
   } else {
     await interaction.reply({ embeds: [first] });
   }
@@ -835,6 +909,7 @@ async function runPredictCsSandbox(interaction, session, sandboxData, contractOv
 
   sessions.delete(session.sessionId);
 }
+
 
 function buildPlainComponentMessage(content, options = {}) {
   const { components = [], flags, allowedMentions } = options;

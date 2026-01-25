@@ -9,11 +9,11 @@ import {
   getRequiredOtherDeflector,
   getUnusedDeflectorPercent,
 } from '../predictmaxcs/deflector.js';
-import { computeAdjustedSummaries, simulateScenario } from '../predictmaxcs/simulation.js';
+import { computeAdjustedSummaries, simulateScenario, simulateScenariosParallel } from '../predictmaxcs/simulation.js';
 import { buildTokenPlan } from '../predictmaxcs/tokens.js';
-import { optimizeStones } from '../predictmaxcs/model.js';
+import { optimizeStones, TOKEN_CANDIDATES } from '../predictmaxcs/model.js';
 
-export function buildPredictCsModel(options) {
+export async function buildPredictCsModel(options) {
   const COLEGGTIBLES = getDynamicColeggtibles();
   const {
     players,
@@ -29,6 +29,7 @@ export function buildPredictCsModel(options) {
     siabEnabled,
     modifierType = null,
     modifierValue = null,
+    progress = null,
   } = options;
   const bases = getContractAdjustedBases({ modifierType, modifierValue });
 
@@ -104,7 +105,7 @@ export function buildPredictCsModel(options) {
     playerConfigs,
   });
 
-  const tokenUpgrade = optimizePredictCsTokens({
+  const tokenUpgrade = await optimizePredictCsTokens({
     players,
     baseTokens,
     altTokens,
@@ -120,6 +121,7 @@ export function buildPredictCsModel(options) {
     deflectorDisplay,
     assumptions,
     boostOrder,
+    progress: options.progress,
   });
 
   const finalTokensByPlayer = tokenUpgrade.tokensByPlayer ?? tokensByPlayer;
@@ -204,7 +206,7 @@ function buildPredictCsDeflectorDisplay(options) {
   };
 }
 
-function optimizePredictCsTokens(options) {
+async function optimizePredictCsTokens(options) {
   const {
     players,
     baseTokens,
@@ -220,25 +222,52 @@ function optimizePredictCsTokens(options) {
     deflectorDisplay,
     assumptions,
     boostOrder,
+    progress = null,
   } = options;
-  const tokenCandidates = [0, 1, 2, 3, 4, 5, 6, 8];
+  const tokenCandidates = TOKEN_CANDIDATES;
+  const canUpdateProgress = typeof progress?.update === 'function';
 
-  const evaluateScenario = tokensByPlayer => {
-    const scenario = simulateScenario({
-      players,
-      playerDeflectors: baselineDeflectors,
-      playerConfigs,
-      durationSeconds,
-      targetEggs,
-      tokenTimerMinutes,
-      giftMinutes,
-      gg,
-      baseIHR,
-      tokensPerPlayer: tokensByPlayer,
-      cxpMode,
-      boostOrder,
-    });
+  const buildScenarioOptions = tokensByPlayer => ({
+    players,
+    playerDeflectors: baselineDeflectors,
+    playerConfigs,
+    durationSeconds,
+    targetEggs,
+    tokenTimerMinutes,
+    giftMinutes,
+    gg,
+    baseIHR,
+    tokensPerPlayer: tokensByPlayer,
+    cxpMode,
+    boostOrder,
+  });
 
+  const evaluateBatch = async (tokensByPlayerList, completedOffset) => {
+    if (!tokensByPlayerList.length) return { results: [], completedOffset };
+    const scenarios = tokensByPlayerList.map(buildScenarioOptions);
+    const onProgress = canUpdateProgress
+      ? ({ completed, total, active, queued }) => {
+        progress.update({
+          completed: completedOffset + completed,
+          active,
+          queued,
+        });
+      }
+      : null;
+
+    const results = await simulateScenariosParallel(scenarios, { onProgress });
+
+    if (canUpdateProgress) {
+      progress.update({
+        completed: completedOffset + scenarios.length,
+        active: 0,
+      });
+    }
+
+    return { results, completedOffset: completedOffset + scenarios.length };
+  };
+
+  const buildScoreEntry = scenario => {
     const adjusted = computeAdjustedSummaries({
       summaries: scenario.summaries,
       displayDeflectors: deflectorDisplay.displayDeflectors,
@@ -262,27 +291,43 @@ function optimizePredictCsTokens(options) {
   };
 
   const baseTokensByPlayer = Array.from({ length: players }, () => baseTokens);
-  let best = evaluateScenario(baseTokensByPlayer);
+  let completedOffset = 0;
+  const baseBatch = await evaluateBatch([baseTokensByPlayer], completedOffset);
+  completedOffset = baseBatch.completedOffset;
+  let best = buildScoreEntry(baseBatch.results[0]);
   let bestTokensByPlayer = baseTokensByPlayer;
 
-  const tryCandidate = (index, candidate) => {
-    const tokensByPlayer = bestTokensByPlayer.map((tokens, idx) => (idx === index ? candidate : tokens));
-    const current = evaluateScenario(tokensByPlayer);
-    if (current.score > best.score) {
-      best = current;
-      bestTokensByPlayer = tokensByPlayer;
-    }
-  };
-
   for (let index = players - 1; index >= 0; index -= 1) {
-    for (const candidate of tokenCandidates) {
-      tryCandidate(index, candidate);
+    const candidateTokens = tokenCandidates.map(candidate =>
+      bestTokensByPlayer.map((tokens, idx) => (idx === index ? candidate : tokens)));
+    const batch = await evaluateBatch(candidateTokens, completedOffset);
+    completedOffset = batch.completedOffset;
+
+    const scored = batch.results.map(buildScoreEntry);
+    const bestCandidate = scored.reduce((top, entry, idx) =>
+      (entry.score > top.entry.score ? { entry, idx } : top),
+    { entry: best, idx: -1 });
+
+    if (bestCandidate.entry.score > best.score) {
+      best = bestCandidate.entry;
+      bestTokensByPlayer = candidateTokens[bestCandidate.idx];
     }
   }
 
   for (let index = 0; index < players; index += 1) {
-    for (const candidate of tokenCandidates) {
-      tryCandidate(index, candidate);
+    const candidateTokens = tokenCandidates.map(candidate =>
+      bestTokensByPlayer.map((tokens, idx) => (idx === index ? candidate : tokens)));
+    const batch = await evaluateBatch(candidateTokens, completedOffset);
+    completedOffset = batch.completedOffset;
+
+    const scored = batch.results.map(buildScoreEntry);
+    const bestCandidate = scored.reduce((top, entry, idx) =>
+      (entry.score > top.entry.score ? { entry, idx } : top),
+    { entry: best, idx: -1 });
+
+    if (bestCandidate.entry.score > best.score) {
+      best = bestCandidate.entry;
+      bestTokensByPlayer = candidateTokens[bestCandidate.idx];
     }
   }
 

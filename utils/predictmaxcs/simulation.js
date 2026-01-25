@@ -1,5 +1,107 @@
 import { getBtvRate, getCS, getTeamwork } from './score.js';
 import { applyNextBoost, computeTotalTokens } from './tokens.js';
+import os from 'node:os';
+import { Worker } from 'node:worker_threads';
+import readline from 'node:readline';
+
+const DEFAULT_MAX_WORKERS = Math.min(8, Math.max(1, os.cpus()?.length ?? 1));
+
+function runScenarioWorker(options) {
+  return new Promise((resolve, reject) => {
+    const worker = new Worker(new URL('./simulationWorker.js', import.meta.url), {
+      workerData: options,
+    });
+
+    worker.once('message', resolve);
+    worker.once('error', reject);
+    worker.once('exit', (code) => {
+      if (code !== 0) {
+        reject(new Error(`Simulation worker exited with code ${code}`));
+      }
+    });
+  });
+}
+
+export async function simulateScenarioParallel(options, { maxWorkers } = {}) {
+  const [result] = await simulateScenariosParallel([options], { maxWorkers });
+  return result;
+}
+
+export function createConsoleProgress(total, { prefix = 'Simulations', width = 20 } = {}) {
+  const safeTotal = Math.max(1, Number(total) || 1);
+  return ({ completed }) => {
+    const ratio = Math.min(1, Math.max(0, completed / safeTotal));
+    const filled = Math.round(ratio * width);
+    const bar = `${'█'.repeat(filled)}${'░'.repeat(width - filled)}`;
+    const percent = Math.round(ratio * 100);
+    readline.clearLine(process.stdout, 0);
+    readline.cursorTo(process.stdout, 0);
+    process.stdout.write(`${prefix}: [${bar}] ${percent}% (${completed}/${safeTotal})`);
+    if (completed >= safeTotal) {
+      process.stdout.write('\n');
+    }
+  };
+}
+
+export async function simulateScenariosParallel(
+  scenarios,
+  {
+    maxWorkers = DEFAULT_MAX_WORKERS,
+    onProgress = null,
+    showProgress = false,
+    progressOptions = {},
+  } = {}
+) {
+  if (!Array.isArray(scenarios) || scenarios.length === 0) return [];
+
+  const results = new Array(scenarios.length);
+  let nextIndex = 0;
+  let active = 0;
+  let completed = 0;
+  const reporter = typeof onProgress === 'function'
+    ? onProgress
+    : (showProgress ? createConsoleProgress(scenarios.length, progressOptions) : null);
+
+  if (reporter) {
+    reporter({ completed, total: scenarios.length, active, queued: scenarios.length });
+  }
+
+  return new Promise((resolve, reject) => {
+    const spawnNext = () => {
+      if (nextIndex >= scenarios.length && active === 0) {
+        resolve(results);
+        return;
+      }
+
+      while (active < maxWorkers && nextIndex < scenarios.length) {
+        const currentIndex = nextIndex;
+        nextIndex += 1;
+        active += 1;
+
+        runScenarioWorker(scenarios[currentIndex])
+          .then((result) => {
+            results[currentIndex] = result;
+            active -= 1;
+            completed += 1;
+            if (reporter) {
+              reporter({
+                completed,
+                total: scenarios.length,
+                active,
+                queued: Math.max(0, scenarios.length - completed - active),
+              });
+            }
+            spawnNext();
+          })
+          .catch((error) => {
+            reject(error);
+          });
+      }
+    };
+
+    spawnNext();
+  });
+}
 
 export function simulateScenario(options) {
   const {

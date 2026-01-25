@@ -77,6 +77,63 @@ export function chunkContent(input, options = {}) {
   return chunkScalarContent(input, { prefix, suffix, effectiveLimit });
 }
 
+export function buildProgressBar({ completed, total, width = 20 }) {
+  const safeTotal = Math.max(1, Number(total) || 1);
+  const ratio = Math.min(1, Math.max(0, (Number(completed) || 0) / safeTotal));
+  const filled = Math.round(ratio * width);
+  return `${'█'.repeat(filled)}${'░'.repeat(Math.max(0, width - filled))}`;
+}
+
+export function createDiscordProgressReporter(
+  interaction,
+  {
+    intervalMs = 2000,
+    prefix = 'Simulations',
+    width = 20,
+  } = {}
+) {
+  let lastUpdate = 0;
+
+  return async ({ completed = 0, total = 0, active = 0, queued = 0 } = {}) => {
+    const now = Date.now();
+    const isFinal = total > 0 && completed >= total;
+    if (!isFinal && now - lastUpdate < intervalMs) return;
+    lastUpdate = now;
+
+    const bar = buildProgressBar({ completed, total, width });
+    const percent = total > 0 ? Math.round((completed / total) * 100) : 0;
+    const content = `${prefix}: [${bar}] ${percent}% (${completed}/${total}) | active: ${active} | queued: ${queued}`;
+
+    if (typeof interaction?.editReply === 'function') {
+      await interaction.editReply({ content });
+      return;
+    }
+
+    if (typeof interaction?.reply === 'function') {
+      await interaction.reply({ content });
+    }
+  };
+}
+
+export function startDeferredReplyHeartbeat(
+  interaction,
+  {
+    intervalMs = 2000,
+    prefix = 'Working',
+  } = {}
+) {
+  const startedAt = Date.now();
+  const timer = setInterval(() => {
+    const elapsedSeconds = Math.max(0, Math.floor((Date.now() - startedAt) / 1000));
+    const content = `${prefix}... (${elapsedSeconds}s)`;
+    if (typeof interaction?.editReply === 'function') {
+      Promise.resolve(interaction.editReply({ content })).catch(() => {});
+    }
+  }, intervalMs);
+
+  return () => clearInterval(timer);
+}
+
 function chunkArrayContent(lines, { joiner, prefix, suffix, effectiveLimit }) {
   const chunks = [];
   let currentLines = [];

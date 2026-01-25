@@ -1,9 +1,13 @@
 import { EmbedBuilder, SlashCommandBuilder } from 'discord.js';
-import { chunkContent, createTextComponentMessage } from '../services/discord.js';
+import {
+  chunkContent,
+  createDiscordProgressReporter,
+  createTextComponentMessage,
+} from '../services/discord.js';
 import { fetchContractSummaries } from '../services/contractService.js';
 import { findContractMatch } from '../utils/predictmaxcs/contracts.js';
 import { buildPlayerTableLines, formatEggs, secondsToHuman } from '../utils/predictmaxcs/display.js';
-import { buildModel, getAssumptions } from '../utils/predictmaxcs/model.js';
+import { buildModel, getAssumptions, TOKEN_CANDIDATES } from '../utils/predictmaxcs/model.js';
 
 export const data = new SlashCommandBuilder()
   .setName('predictmaxcs')
@@ -87,8 +91,35 @@ export async function execute(interaction) {
 
   await interaction.deferReply();
 
+  const totalSteps = 2 * (1 + players * TOKEN_CANDIDATES.length * 2);
+  const progressReporter = createDiscordProgressReporter(interaction, {
+    prefix: 'PredictMaxCS',
+    width: 20,
+    intervalMs: 1200,
+  });
+
+  const progress = {
+    total: totalSteps,
+    completed: 0,
+    async update({ completed, active, queued } = {}) {
+      if (Number.isFinite(completed)) {
+        this.completed = Math.min(this.total, completed);
+      }
+      const activeCount = Number.isFinite(active) ? active : 0;
+      const queuedCount = Math.max(0, this.total - this.completed - activeCount);
+      await progressReporter({
+        completed: this.completed,
+        total: this.total,
+        active: activeCount,
+        queued: queuedCount,
+      });
+    },
+  };
+
+  await progress.update({ completed: 0, active: 0, queued: totalSteps });
+
   const assumptions = getAssumptions(avgTe);
-  const model = buildModel({
+  const model = await buildModel({
     players,
     durationSeconds,
     targetEggs,
@@ -99,6 +130,7 @@ export async function execute(interaction) {
     siabOverride,
     modifierType: contractMatch?.modifierType ?? null,
     modifierValue: contractMatch?.modifierValue ?? null,
+    progress,
   });
   const contractLabel = contractMatch?.name || contractMatch?.id || contractInput;
   const outputLines = buildPlayerTableLines(model, assumptions);
@@ -112,7 +144,7 @@ export async function execute(interaction) {
     .setDescription(chunk));
 
   const [first, ...rest] = embeds;
-  await interaction.editReply({ embeds: [first] });
+  await interaction.editReply({ content: '', embeds: [first] });
   for (const embed of rest) {
     await interaction.followUp({ embeds: [embed] });
   }
