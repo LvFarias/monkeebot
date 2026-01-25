@@ -153,6 +153,8 @@ export function buildPredictCsModel(options) {
     giftMinutes,
     gg,
     assumptions,
+    modifierType,
+    modifierValue,
     maxChickens: avgMaxChickens,
     baseIHR: avgIHR,
     playerIHRs,

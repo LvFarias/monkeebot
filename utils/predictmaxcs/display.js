@@ -51,6 +51,36 @@ function formatArtifactColumn(artifacts) {
   return `${deflectorText} ${metroText} ${compassText} ${gussetText}`.trim();
 }
 
+function buildTokenBoostText({ tokenUpgrade, tokensForPrediction, players }) {
+  const lateBoostCount = tokenUpgrade?.bestCount ?? 0;
+  const earlyBoostCount = tokenUpgrade?.earlyBestCount ?? 0;
+  const tokensByPlayer = Array.isArray(tokenUpgrade?.tokensByPlayer)
+    ? tokenUpgrade.tokensByPlayer
+    : [];
+  const lastTokens = tokensByPlayer[players - 1] ?? tokensForPrediction;
+  const earlyTokens = tokensByPlayer[1] ?? 4;
+  const earlyBoostText = earlyBoostCount > 0
+    ? ` | first ${earlyBoostCount} use ${earlyTokens} toks`
+    : '';
+  const lateBoostText = lateBoostCount > 0
+    ? ` | last ${lateBoostCount} use ${lastTokens} toks`
+    : '';
+  return `${earlyBoostText}${lateBoostText}`;
+}
+
+function buildSiabDeltaLine(usePlayer1Siab, siabScoreDelta) {
+  if (!Number.isFinite(siabScoreDelta)) return null;
+  const status = usePlayer1Siab ? 'on' : 'off';
+  const sign = siabScoreDelta >= 0 ? '+' : '';
+  return `SIAB (P1): ${status} | ΔCS ${sign}${siabScoreDelta}`;
+}
+
+function buildModifierLine(modifierType, modifierValue) {
+  if (!modifierType) return null;
+  const valueText = Number.isFinite(modifierValue) ? ` x${modifierValue}` : '';
+  return `Contract modifier: ${modifierType}${valueText}`;
+}
+
 export function buildPlayerTableLines(model, assumptions) {
   const {
     players,
@@ -70,6 +100,10 @@ export function buildPlayerTableLines(model, assumptions) {
     deflectorDisplay,
     playerConfigs,
     playerArtifacts,
+    usePlayer1Siab,
+    siabScoreDelta,
+    modifierType,
+    modifierValue,
   } = model;
 
   const requiredOtherDeflector = Math.ceil(requiredDeflector);
@@ -96,10 +130,10 @@ export function buildPlayerTableLines(model, assumptions) {
   const effectiveTokens = Array.isArray(tokensByPlayer) && tokensByPlayer.length === players
     ? tokensByPlayer
     : Array.from({ length: players }, () => tokensForPrediction);
-  const lateBoostText = tokenUpgrade?.bestCount
-    ? ` | last ${tokenUpgrade.bestCount} use ${tokenUpgrade.tokensByPlayer[players - 1]} toks`
-    : '';
   const ggText = gg ? 'on' : 'off';
+  const boostText = buildTokenBoostText({ tokenUpgrade, tokensForPrediction, players });
+  const siabDeltaText = buildSiabDeltaLine(usePlayer1Siab, siabScoreDelta);
+  const modifierText = buildModifierLine(modifierType, modifierValue);
 
   const displayRows = adjustedSummaries.map((summary, index) => ({
     summary,
@@ -113,9 +147,11 @@ export function buildPlayerTableLines(model, assumptions) {
   const lines = [
     `Token timer: ${formatMinutes(tokenTimerMinutes)} | gift speed: ${formatMinutes(giftMinutes)} | GG: ${ggText}`,
     `Average TE: ${assumptions.te}`,
-    `Tokens to boost: ${tokenEmoji} ${tokensForPrediction}${hasFixedTokens ? '' : ' (fastest max-habs)'}${lateBoostText}`,
+    `Tokens to boost: ${tokenEmoji} ${tokensForPrediction}${hasFixedTokens ? '' : ' (fastest max-habs)'}${boostText}`,
     `Deflector needed (other total): ~${requiredOtherDeflector}% | Unused: ~${Math.max(0, Math.floor(unusedDeflector))}%`,
     `CS: max ${Math.round(adjustedMaxCS)} | mean ${Math.round(adjustedMeanCS)} | min ${Math.round(adjustedMinCS)}`,
+    ...(siabDeltaText ? [siabDeltaText] : []),
+    ...(modifierText ? [modifierText] : []),
     '',
     hasArtifacts
       ? '`player  (cr b) |   artifacts    |tach|quant|toks| cs`'

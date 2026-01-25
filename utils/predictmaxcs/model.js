@@ -169,6 +169,8 @@ export function buildModel(options) {
     giftMinutes,
     gg,
     assumptions,
+    modifierType,
+    modifierValue,
     maxChickens: maxChickensBase,
     baseIHR,
     baseElrPerPlayer,
