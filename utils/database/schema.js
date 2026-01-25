@@ -13,7 +13,9 @@ function ensureContractsTable() {
       max_coop_size INTEGER,
       coop_duration_seconds REAL,
       egg_goal REAL,
-      minutes_per_token REAL
+      minutes_per_token REAL,
+      modifier_type TEXT,
+      modifier_value REAL
     );
   `);
 
@@ -22,6 +24,8 @@ function ensureContractsTable() {
   const hasCoopDurationSeconds = cols.some(col => col.name === 'coop_duration_seconds');
   const hasEggGoal = cols.some(col => col.name === 'egg_goal');
   const hasMinutesPerToken = cols.some(col => col.name === 'minutes_per_token');
+  const hasModifierType = cols.some(col => col.name === 'modifier_type');
+  const hasModifierValue = cols.some(col => col.name === 'modifier_value');
 
   if (!hasMaxCoopSize) {
     db.exec('ALTER TABLE contracts ADD COLUMN max_coop_size INTEGER');
@@ -37,6 +41,14 @@ function ensureContractsTable() {
 
   if (!hasMinutesPerToken) {
     db.exec('ALTER TABLE contracts ADD COLUMN minutes_per_token REAL');
+  }
+
+  if (!hasModifierType) {
+    db.exec('ALTER TABLE contracts ADD COLUMN modifier_type TEXT');
+  }
+
+  if (!hasModifierValue) {
+    db.exec('ALTER TABLE contracts ADD COLUMN modifier_value REAL');
   }
 }
 

@@ -28,38 +28,61 @@ function toNumber(value) {
 
 const SEASON_REGEX = /^(winter|spring|summer|fall)[ _-]?(\d{4})$/;
 
-function mapRemoteContract(obj, ContractType, eggEnum) {
+function resolveEggName(decoded, eggEnum) {
+  let egg = eggEnum.valuesById[decoded.egg] || 'UNKNOWN';
+  if (decoded.egg === 200) {
+    egg = decoded.customEggId?.toUpperCase().replaceAll('-', '_') || 'UNKNOWN';
+  }
+  return egg;
+}
+
+function getEliteSpec(decoded) {
+  const gradeSpecs = decoded.gradeSpecs ?? decoded.grade_specs ?? [];
+  if (!Array.isArray(gradeSpecs)) return null;
+  return gradeSpecs.find(spec => (spec.grade ?? spec.grade_) === GRADE_AAA) ?? null;
+}
+
+function getEggGoalFromSpec(eliteSpec) {
+  const goals = eliteSpec?.goals ?? [];
+  if (!Array.isArray(goals) || goals.length === 0) return null;
+  let eggGoal = null;
+  for (const goal of goals) {
+    const targetAmount = toNumber(goal.targetAmount ?? goal.target_amount ?? null);
+    if (Number.isFinite(targetAmount)) {
+      eggGoal = eggGoal == null ? targetAmount : Math.max(eggGoal, targetAmount);
+    }
+  }
+  return eggGoal;
+}
+
+function getModifierFromSpec(eliteSpec, dimensionEnum) {
+  const modifiers = eliteSpec?.modifiers ?? eliteSpec?.modifiers_ ?? [];
+  const primaryModifier = Array.isArray(modifiers) && modifiers.length > 0 ? modifiers[0] : null;
+  const modifierDimension = primaryModifier?.dimension ?? primaryModifier?.dimension_ ?? null;
+  const modifierType = modifierDimension == null
+    ? null
+    : (dimensionEnum?.valuesById?.[modifierDimension] ?? null);
+  const modifierValue = primaryModifier
+    ? toNumber(primaryModifier.value ?? primaryModifier.value_ ?? null)
+    : null;
+  return { modifierType, modifierValue };
+}
+
+function mapRemoteContract(obj, ContractType, eggEnum, dimensionEnum) {
   const decoded = ContractType.decode(Buffer.from(obj.proto, 'base64'));
   const name = decoded.name || 'Unknown';
   const release = decoded.startTime || 0;
   const season = decoded.seasonId || '';
   const maxCoopSize = toNumber(decoded.maxCoopSize ?? decoded.max_coop_size ?? null);
   const minutesPerToken = toNumber(decoded.minutesPerToken ?? decoded.minutes_per_token ?? null);
-  let egg = eggEnum.valuesById[decoded.egg] || 'UNKNOWN';
-
-  if (decoded.egg === 200) {
-    egg = decoded.customEggId?.toUpperCase().replaceAll('-', '_') || 'UNKNOWN';
-  }
-
-  const gradeSpecs = decoded.gradeSpecs ?? decoded.grade_specs ?? [];
-  const eliteSpec = Array.isArray(gradeSpecs)
-    ? gradeSpecs.find(spec => (spec.grade ?? spec.grade_) === GRADE_AAA)
-    : null;
+  const egg = resolveEggName(decoded, eggEnum);
+  const eliteSpec = getEliteSpec(decoded);
 
   const coopDurationSeconds = eliteSpec
     ? toNumber(eliteSpec.lengthSeconds ?? eliteSpec.length_seconds ?? null)
     : null;
-
-  let eggGoal = null;
-  const goals = eliteSpec?.goals ?? [];
-  if (Array.isArray(goals) && goals.length > 0) {
-    for (const goal of goals) {
-      const targetAmount = toNumber(goal.targetAmount ?? goal.target_amount ?? null);
-      if (Number.isFinite(targetAmount)) {
-        eggGoal = eggGoal == null ? targetAmount : Math.max(eggGoal, targetAmount);
-      }
-    }
-  }
+  const eggGoal = getEggGoalFromSpec(eliteSpec);
+  const { modifierType, modifierValue } = getModifierFromSpec(eliteSpec, dimensionEnum);
 
   return {
     id: obj.id,
@@ -71,6 +94,8 @@ function mapRemoteContract(obj, ContractType, eggEnum) {
     coopDurationSeconds,
     eggGoal,
     minutesPerToken,
+    modifierType,
+    modifierValue,
   };
 }
 
@@ -81,8 +106,9 @@ async function fetchAndCacheContracts() {
   const root = await getProtoRoot();
   const ContractType = root.lookupType('Contract');
   const eggEnum = root.lookupEnum('Egg');
+  const dimensionEnum = root.lookupEnum('GameModifier.GameDimension');
 
-  const rows = response.data.map(obj => mapRemoteContract(obj, ContractType, eggEnum));
+  const rows = response.data.map(obj => mapRemoteContract(obj, ContractType, eggEnum, dimensionEnum));
   upsertContracts(rows);
   try {
     await fetchAndCacheColeggtibles();

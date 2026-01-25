@@ -95,6 +95,8 @@ export async function execute(interaction) {
     gg,
     assumptions,
     siabOverride,
+    modifierType: contractMatch?.modifierType ?? null,
+    modifierValue: contractMatch?.modifierValue ?? null,
   });
   const contractLabel = contractMatch?.name || contractMatch?.id || contractInput;
   const outputLines = buildPlayerTableLines(model, assumptions);

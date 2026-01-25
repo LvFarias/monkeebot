@@ -28,6 +28,45 @@ const DEFAULT_COLEGGTIBLES = {
   chickenMult: 1,
 };
 
+const DEFAULT_CONTRACT_MODIFIERS = {
+  elrMult: 1,
+  shipMult: 1,
+  ihrMult: 1,
+  chickenMult: 1,
+};
+
+function normalizeModifierType(value) {
+  if (value == null) return null;
+  if (typeof value === 'number') return value;
+  const key = String(value).trim().toUpperCase();
+  if (!key) return null;
+  if (Object.hasOwn(GameDimension, key)) {
+    return GameDimension[key];
+  }
+  return null;
+}
+
+export function getContractModifierMultipliers({ modifierType, modifierValue } = {}) {
+  const dimension = normalizeModifierType(modifierType);
+  const value = Number.isFinite(modifierValue) ? modifierValue : null;
+  if (!Number.isFinite(dimension) || !Number.isFinite(value) || value <= 0) {
+    return { ...DEFAULT_CONTRACT_MODIFIERS };
+  }
+
+  switch (dimension) {
+    case GameDimension.INTERNAL_HATCHERY_RATE:
+      return { ...DEFAULT_CONTRACT_MODIFIERS, ihrMult: value };
+    case GameDimension.EGG_LAYING_RATE:
+      return { ...DEFAULT_CONTRACT_MODIFIERS, elrMult: value };
+    case GameDimension.SHIPPING_CAPACITY:
+      return { ...DEFAULT_CONTRACT_MODIFIERS, shipMult: value };
+    case GameDimension.HAB_CAPACITY:
+      return { ...DEFAULT_CONTRACT_MODIFIERS, chickenMult: value };
+    default:
+      return { ...DEFAULT_CONTRACT_MODIFIERS };
+  }
+}
+
 function combineMultiplier(current, next) {
   if (!Number.isFinite(next) || next <= 0) return current;
   return current * next;
@@ -83,3 +122,13 @@ export const BASES = {
   baseChickens: 11340000000,
   baseIHR: 7440,
 };
+
+export function getContractAdjustedBases({ modifierType, modifierValue } = {}) {
+  const modifiers = getContractModifierMultipliers({ modifierType, modifierValue });
+  return {
+    baseELR: BASES.baseELR * modifiers.elrMult,
+    baseShip: BASES.baseShip * modifiers.shipMult,
+    baseChickens: BASES.baseChickens * modifiers.chickenMult,
+    baseIHR: BASES.baseIHR * modifiers.ihrMult,
+  };
+}

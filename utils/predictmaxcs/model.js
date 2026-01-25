@@ -1,6 +1,7 @@
 import {
   BASES,
   BOOSTED_SET,
+  getContractAdjustedBases,
   getDynamicColeggtibles,
   DEFLECTOR_TIERS,
   IHR_SET,
@@ -37,21 +38,24 @@ export function buildModel(options) {
     gg,
     assumptions,
     siabOverride = null,
+    modifierType = null,
+    modifierValue = null,
   } = options;
-  const maxChickens = BASES.baseChickens
+  const bases = getContractAdjustedBases({ modifierType, modifierValue });
+  const maxChickensBase = bases.baseChickens
     * BOOSTED_SET.gusset.chickMult
     * COLEGGTIBLES.chickenMult
     + (assumptions.swapBonus ? getSwapChickenJump(players) : 0);
-  const baseELR = BASES.baseELR * BOOSTED_SET.metro.elrMult * COLEGGTIBLES.elrMult;
-  const baseShip = BASES.baseShip * BOOSTED_SET.compass.srMult * COLEGGTIBLES.shipMult;
-  const baseIHR = BASES.baseIHR
+  const baseELR = bases.baseELR * BOOSTED_SET.metro.elrMult * COLEGGTIBLES.elrMult;
+  const baseShip = bases.baseShip * BOOSTED_SET.compass.srMult * COLEGGTIBLES.shipMult;
+  const baseIHR = bases.baseIHR
     * Math.pow(1.01, assumptions.te)
     * COLEGGTIBLES.ihrMult
     * IHR_SET.chalice.ihrMult
     * IHR_SET.monocle.ihrMult
     * Math.pow(1.04, getIhrStoneSlots());
 
-  const baseElrPerPlayer = maxChickens * baseELR;
+  const baseElrPerPlayer = maxChickensBase * baseELR;
   const baseSrPerPlayer = baseShip;
   const totalSlots = BOOSTED_SET.metro.slots + BOOSTED_SET.compass.slots + BOOSTED_SET.gusset.slots + BOOSTED_SET.deflector.slots;
 
@@ -75,7 +79,8 @@ export function buildModel(options) {
     const playerConfigs = buildPlayerConfigs({
       coleggtibles: COLEGGTIBLES,
       players,
-      maxChickens,
+      maxChickens: maxChickensBase,
+      baseChickens: bases.baseChickens,
       baseELR,
       baseShip,
       totalSlots,
@@ -154,7 +159,7 @@ export function buildModel(options) {
   const finalTokensByPlayer = selectedVariant.tokensByPlayer;
   const deflectorPlan = buildDeflectorPlan(baselineDeflectors, DEFLECTOR_TIERS);
 
-  const tokenPlan = buildTokenPlan(tokenTimerMinutes, giftMinutes, gg, players, baseIHR, maxChickens);
+  const tokenPlan = buildTokenPlan(tokenTimerMinutes, giftMinutes, gg, players, baseIHR, maxChickensBase);
 
   return {
     players,
@@ -164,7 +169,7 @@ export function buildModel(options) {
     giftMinutes,
     gg,
     assumptions,
-    maxChickens,
+    maxChickens: maxChickensBase,
     baseIHR,
     baseElrPerPlayer,
     baseSrPerPlayer,
@@ -192,6 +197,7 @@ export function buildPlayerConfigs(options) {
     coleggtibles,
     players,
     maxChickens,
+    baseChickens = BASES.baseChickens,
     baseELR,
     baseShip,
     totalSlots,
@@ -200,7 +206,7 @@ export function buildPlayerConfigs(options) {
   } = options;
 
   const gussetBonus = Math.max(0, (BOOSTED_SET.gusset.chickMult ?? 1) - 1);
-  const player1ChickenPenalty = BASES.baseChickens * (coleggtibles?.chickenMult ?? 1) * gussetBonus;
+  const player1ChickenPenalty = baseChickens * (coleggtibles?.chickenMult ?? 1) * gussetBonus;
   const player1SlotPenalty = 1;
   const baseSiabPercent = Number.isFinite(IHR_SET.siabPercent) ? IHR_SET.siabPercent : 0;
 

@@ -10,9 +10,11 @@ const upsertContractStmt = db.prepare(`
     max_coop_size,
     coop_duration_seconds,
     egg_goal,
-    minutes_per_token
+    minutes_per_token,
+    modifier_type,
+    modifier_value
   )
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   ON CONFLICT(contract_id) DO UPDATE SET
     name = excluded.name,
     release = excluded.release,
@@ -21,7 +23,9 @@ const upsertContractStmt = db.prepare(`
     max_coop_size = excluded.max_coop_size,
     coop_duration_seconds = excluded.coop_duration_seconds,
     egg_goal = excluded.egg_goal,
-    minutes_per_token = excluded.minutes_per_token
+    minutes_per_token = excluded.minutes_per_token,
+    modifier_type = excluded.modifier_type,
+    modifier_value = excluded.modifier_value
 `);
 
 const getAllContractsStmt = db.prepare(`
@@ -34,7 +38,9 @@ const getAllContractsStmt = db.prepare(`
     max_coop_size,
     coop_duration_seconds,
     egg_goal,
-    minutes_per_token
+    minutes_per_token,
+    modifier_type,
+    modifier_value
   FROM contracts
   ORDER BY release DESC
 `);
@@ -65,6 +71,8 @@ function upsertContractRow(row) {
   const coopDurationSeconds = toNumberOrNull(row.coopDurationSeconds);
   const eggGoal = toNumberOrNull(row.eggGoal);
   const minutesPerToken = toNumberOrNull(row.minutesPerToken);
+  const modifierType = normalizeOptional(row.modifierType);
+  const modifierValue = toNumberOrNull(row.modifierValue);
 
   upsertContractStmt.run(
     id,
@@ -75,7 +83,9 @@ function upsertContractRow(row) {
     maxCoopSize,
     coopDurationSeconds,
     eggGoal,
-    minutesPerToken
+    minutesPerToken,
+    modifierType,
+    modifierValue
   );
 }
 
@@ -94,7 +104,19 @@ export function upsertContracts(rows = []) {
 export function getStoredContracts() {
   const rows = getAllContractsStmt.all() ?? [];
   return rows
-    .map(({ id, name, season, egg, release, max_coop_size, coop_duration_seconds, egg_goal, minutes_per_token }) => ({
+    .map(({
+      id,
+      name,
+      season,
+      egg,
+      release,
+      max_coop_size,
+      coop_duration_seconds,
+      egg_goal,
+      minutes_per_token,
+      modifier_type,
+      modifier_value,
+    }) => ({
       id,
       name,
       season,
@@ -104,6 +126,8 @@ export function getStoredContracts() {
       coopDurationSeconds: coop_duration_seconds,
       eggGoal: egg_goal,
       minutesPerToken: minutes_per_token,
+      modifierType: modifier_type,
+      modifierValue: modifier_value,
     }));
 }
 

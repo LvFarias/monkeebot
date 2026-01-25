@@ -135,6 +135,8 @@ export async function execute(interaction) {
     gg,
     boostOrderMode,
     siabEnabled,
+    modifierType: contractMatch?.modifierType ?? null,
+    modifierValue: contractMatch?.modifierValue ?? null,
     contracts,
     mode: 'select',
     playerArtifacts: Array.from({ length: players }, () => ({
@@ -423,6 +425,8 @@ async function handlePredictCsNext({ interaction, sessionId, playerIndex, sessio
     playerTe: session.playerTe,
     boostOrder,
     siabEnabled: session.siabEnabled,
+    modifierType: session.modifierType,
+    modifierValue: session.modifierValue,
   });
 
   const avgTe = session.playerTe.reduce((sum, value) => sum + value, 0) / Math.max(1, session.playerTe.length);
@@ -683,6 +687,8 @@ function resolveSandboxContractOverride(session) {
       durationSeconds: picked.coopDurationSeconds,
       targetEggs: picked.eggGoal,
       tokenTimerMinutes: picked.minutesPerToken,
+      modifierType: picked.modifierType ?? null,
+      modifierValue: picked.modifierValue ?? null,
     };
   }
 
@@ -691,6 +697,8 @@ function resolveSandboxContractOverride(session) {
     durationSeconds: session.sandboxData?.contractInfo?.durationSeconds ?? session.durationSeconds,
     targetEggs: session.sandboxData?.contractInfo?.targetEggs ?? session.targetEggs,
     tokenTimerMinutes: session.sandboxData?.contractInfo?.tokenTimerMinutes ?? session.tokenTimerMinutes,
+    modifierType: session.modifierType ?? null,
+    modifierValue: session.modifierValue ?? null,
   };
 }
 
@@ -764,6 +772,8 @@ async function runPredictCsSandbox(interaction, session, sandboxData, contractOv
     playerTe,
     boostOrder,
     siabEnabled: session.siabEnabled,
+    modifierType: contractOverride.modifierType ?? null,
+    modifierValue: contractOverride.modifierValue ?? null,
   });
 
   const avgTe = playerTe.reduce((sum, value) => sum + value, 0) / Math.max(1, playerTe.length);

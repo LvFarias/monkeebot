@@ -1,5 +1,5 @@
 import {
-  BASES,
+  getContractAdjustedBases,
   getDynamicColeggtibles,
   DEFLECTOR_TIERS,
   IHR_SET,
@@ -27,7 +27,10 @@ export function buildPredictCsModel(options) {
     playerTe,
     boostOrder,
     siabEnabled,
+    modifierType = null,
+    modifierValue = null,
   } = options;
+  const bases = getContractAdjustedBases({ modifierType, modifierValue });
 
   const avgTe = playerTe.reduce((sum, value) => sum + value, 0) / Math.max(1, playerTe.length);
   const assumptions = {
@@ -54,10 +57,10 @@ export function buildPredictCsModel(options) {
     const ihrSiabPercent = ihrSiab?.siabPercent ?? 0;
     const te = Number.isFinite(playerTe?.[index]) ? playerTe[index] : 0;
 
-    const maxChickens = BASES.baseChickens * COLEGGTIBLES.chickenMult * gusset.chickMult;
-    const baseELR = BASES.baseELR * COLEGGTIBLES.elrMult * metro.elrMult;
-    const baseShip = BASES.baseShip * COLEGGTIBLES.shipMult * compass.srMult;
-    const baseIHR = BASES.baseIHR
+    const maxChickens = bases.baseChickens * COLEGGTIBLES.chickenMult * gusset.chickMult;
+    const baseELR = bases.baseELR * COLEGGTIBLES.elrMult * metro.elrMult;
+    const baseShip = bases.baseShip * COLEGGTIBLES.shipMult * compass.srMult;
+    const baseIHR = bases.baseIHR
       * Math.pow(1.01, te)
       * COLEGGTIBLES.ihrMult
       * (Number.isFinite(chalice?.ihrMult) ? chalice.ihrMult : IHR_SET.chalice.ihrMult)
