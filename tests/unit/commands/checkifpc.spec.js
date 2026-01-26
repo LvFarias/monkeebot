@@ -4,7 +4,6 @@ import { createInteraction, createOptions } from './helpers.js';
 vi.mock('../../../services/discord.js', () => ({
   createTextComponentMessage: (content, options = {}) => ({ content, ...options }),
   chunkContent: (input) => [Array.isArray(input) ? input.join('\n') : String(input)],
-  createDiscordProgressReporter: () => async () => {},
 }));
 
 vi.mock('../../../services/contractService.js', () => ({
@@ -39,7 +38,7 @@ describe('commands/checkifpc', () => {
 
   it('reports cooptracker link when known players are found', async () => {
     fetchContractSummaries.mockResolvedValue([{ id: 'c1', name: 'Contract 1' }]);
-    findFreeCoopCodes.mockResolvedValue({ filteredResults: [], coopCodes: ['aoo'] });
+    findFreeCoopCodes.mockResolvedValue({ filteredResults: [], coopCodes: [] });
     listCoops.mockReturnValue([]);
     checkCoopForKnownPlayers
       .mockResolvedValueOnce({ ok: true, matched: [{ ign: 'Player1', discordId: '123' }], missing: [] })
@@ -48,14 +47,17 @@ describe('commands/checkifpc', () => {
     const interaction = createInteraction({
       options: createOptions({ strings: { contract: 'c1' } }),
     });
+    interaction.channel.isTextBased = () => true;
+    interaction.channel.isDMBased = () => true;
 
     await execute(interaction);
 
-    expect(interaction.deferReply).toHaveBeenCalled();
-    expect(interaction.editReply).toHaveBeenCalled();
+    expect(interaction.reply).toHaveBeenCalled();
     expect(checkCoopForKnownPlayers).toHaveBeenCalled();
 
-    const content = interaction.editReply.mock.calls[0][0].content;
-    expect(content).toContain('https://eicoop-carpet.netlify.app/c1/');
+    const sent = interaction.channel.send.mock.calls
+      .map(call => call?.[0]?.content ?? '')
+      .join('\n');
+    expect(sent).toContain('https://eicoop-carpet.netlify.app/c1/');
   });
 });
