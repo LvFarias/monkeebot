@@ -500,15 +500,15 @@ async function handlePredictCsNext({ interaction, sessionId, playerIndex, sessio
     playerTe: session.playerTe,
     boostOrder,
     siabEnabled: session.siabEnabled,
+    pushCount: session.pushCount,
     modifierType: session.modifierType,
     modifierValue: session.modifierValue,
     progress,
   });
 
   const avgTe = session.playerTe.reduce((sum, value) => sum + value, 0) / Math.max(1, session.playerTe.length);
-  const pushTe = computePusheeAverage(session.playerTe, session.pushCount);
   const assumptions = {
-    te: Math.round(Number.isFinite(pushTe) ? pushTe : avgTe),
+    te: Math.round(avgTe),
     teValues: session.playerTe,
     tokensPerPlayer: 0,
     swapBonus: false,
@@ -889,15 +889,15 @@ async function runPredictCsSandbox(interaction, session, sandboxData, contractOv
     playerTe,
     boostOrder,
     siabEnabled: session.siabEnabled,
+    pushCount: session.pushCount,
     modifierType: contractOverride.modifierType ?? null,
     modifierValue: contractOverride.modifierValue ?? null,
     progress,
   });
 
   const avgTe = playerTe.reduce((sum, value) => sum + value, 0) / Math.max(1, playerTe.length);
-  const pushTe = computePusheeAverage(playerTe, session.pushCount);
   const assumptions = {
-    te: Math.round(Number.isFinite(pushTe) ? pushTe : avgTe),
+    te: Math.round(avgTe),
     teValues: playerTe,
     tokensPerPlayer: 0,
     swapBonus: false,
@@ -952,17 +952,6 @@ function buildSelectOptions(options, selectedName) {
     value: option.name,
     default: option.name === selectedName,
   }));
-}
-
-function computePusheeAverage(values, pushCount) {
-  const list = Array.isArray(values) ? values.filter(value => Number.isFinite(value)) : [];
-  if (!list.length) return 0;
-  const count = Number.isInteger(pushCount) ? Math.max(0, Math.min(pushCount, list.length)) : 0;
-  const selected = count > 0
-    ? [...list].sort((a, b) => b - a).slice(0, count)
-    : list;
-  const sum = selected.reduce((acc, value) => acc + value, 0);
-  return sum / Math.max(1, selected.length);
 }
 
 function buildTeOptions(selectedValue) {

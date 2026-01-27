@@ -27,6 +27,7 @@ export async function buildPredictCsModel(options) {
     playerTe,
     boostOrder,
     siabEnabled,
+    pushCount = 0,
     modifierType = null,
     modifierValue = null,
     progress = null,
@@ -121,6 +122,7 @@ export async function buildPredictCsModel(options) {
     deflectorDisplay,
     assumptions,
     boostOrder,
+    pushCount,
     progress: options.progress,
   });
 
@@ -222,6 +224,7 @@ async function optimizePredictCsTokens(options) {
     deflectorDisplay,
     assumptions,
     boostOrder,
+    pushCount = 0,
     progress = null,
   } = options;
   const tokenCandidates = TOKEN_CANDIDATES;
@@ -276,10 +279,27 @@ async function optimizePredictCsTokens(options) {
       assumptions,
     });
 
+    let score = adjusted.adjustedMeanCS;
+    const normalizedPushCount = Number.isInteger(pushCount)
+      ? Math.max(0, Math.min(pushCount, adjusted.adjustedSummaries.length))
+      : 0;
+    if (normalizedPushCount > 0) {
+      const boostOrderList = Array.isArray(boostOrder)
+        ? boostOrder
+        : Array.from({ length: players }, (_, index) => index);
+      const orderedScores = boostOrderList
+        .slice(0, normalizedPushCount)
+        .map(playerIndex => adjusted.adjustedSummaries[playerIndex]?.cs)
+        .filter(value => Number.isFinite(value));
+      if (orderedScores.length > 0) {
+        score = orderedScores.reduce((sum, value) => sum + value, 0) / orderedScores.length;
+      }
+    }
+
     return {
       scenario,
       adjusted,
-      score: adjusted.adjustedMeanCS,
+      score,
       summaries: adjusted.adjustedSummaries,
     };
   };
