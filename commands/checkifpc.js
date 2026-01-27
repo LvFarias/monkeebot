@@ -11,8 +11,6 @@ const CODE_OPTION_EXTENDED = 'extended';
 const CODE_OPTION_EXTENDED_PLUS = 'extended_plus';
 const CONTRACT_OPTION = 'contract';
 const SEARCHLIST_OPTION = 'searchlist';
-const ALL_DB_OPTION = '__ALL_DB__';
-
 const DEFAULT_CONCURRENCY = 12;
 
 async function asyncPool(limit, items, iterator) {
@@ -127,15 +125,8 @@ export async function execute(interaction) {
   const sortedContracts = [...summaries].sort((a, b) => (b.release ?? 0) - (a.release ?? 0));
   const nameById = new Map(sortedContracts.map(c => [c.id, c.name || c.id]));
 
-  let selectedContracts;
-  if (contractInput === ALL_DB_OPTION) {
-    selectedContracts = sortedContracts
-      .filter(contract => contract?.id)
-      .map(contract => [contract.name || contract.id, contract.id]);
-  } else {
-    const displayName = nameById.get(contractInput) || contractInput;
-    selectedContracts = [[displayName, contractInput]];
-  }
+  const displayName = nameById.get(contractInput) || contractInput;
+  const selectedContracts = [[displayName, contractInput]];
 
   if (!selectedContracts.length) {
     await channelCheck.channel.send(createTextComponentMessage('No contracts matched your selection.'));
@@ -244,14 +235,11 @@ async function buildStaticContractOptions() {
   const contracts = await fetchContractSummaries();
   const sorted = [...contracts].sort((a, b) => (b.release ?? 0) - (a.release ?? 0));
 
-  const options = [
-    { name: 'All (Database)', value: ALL_DB_OPTION, description: 'All contracts in the database' },
-    ...sorted.map(contract => ({
-      name: contract.name || contract.id,
-      value: contract.id,
-      description: contract.name ? contract.id : undefined,
-    })),
-  ];
+  const options = sorted.map(contract => ({
+    name: contract.name || contract.id,
+    value: contract.id,
+    description: contract.name ? contract.id : undefined,
+  }));
 
   return options.slice(0, 25);
 }
