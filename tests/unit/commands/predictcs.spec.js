@@ -41,6 +41,7 @@ const createOptions = ({
   tokenSpeed = 5,
   boostOrder = 'input',
   gg = null,
+  push = null,
   focused = '',
 } = {}) => ({
   getString: (name) => {
@@ -49,6 +50,7 @@ const createOptions = ({
     return null;
   },
   getNumber: (name) => (name === 'token_speed' ? tokenSpeed : null),
+  getInteger: (name) => (name === 'push' ? push : null),
   getBoolean: (name) => (name === 'gg' ? gg : null),
   getFocused: () => focused,
 });

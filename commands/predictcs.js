@@ -89,6 +89,13 @@ export const data = new SlashCommandBuilder()
       .setName('gg')
       .setDescription('Double tokens per gift (GG)')
       .setRequired(false)
+  )
+  .addIntegerOption(option =>
+    option
+      .setName('push')
+      .setDescription('Number of pushees (0 = none, 1 = top 1, 2 = top 2, etc.)')
+      .setMinValue(0)
+      .setRequired(false)
   );
 
 export async function execute(interaction) {
@@ -96,6 +103,7 @@ export async function execute(interaction) {
   const tokenSpeedInput = interaction.options.getNumber('token_speed');
   const gg = interaction.options.getBoolean('gg') ?? false;
   const boostOrderMode = interaction.options.getString('boost_order');
+  const pushCount = interaction.options.getInteger('push') ?? 0;
   const siabEnabled = true;
 
   const contracts = await fetchContractSummaries();
@@ -128,6 +136,13 @@ export async function execute(interaction) {
     return interaction.reply(createTextComponentMessage('Invalid token speed input.', { flags: 64 }));
   }
 
+  if (!Number.isInteger(pushCount) || pushCount < 0 || pushCount > Math.max(0, players - 1)) {
+    return interaction.reply(createTextComponentMessage(
+      `Invalid push value. Use an integer from 0 to ${Math.max(0, players - 1)}.`,
+      { flags: 64 },
+    ));
+  }
+
   await interaction.deferReply();
   const stopHeartbeat = startDeferredReplyHeartbeat(interaction, { prefix: 'Preparing PredictCS' });
 
@@ -144,6 +159,7 @@ export async function execute(interaction) {
     gg,
     boostOrderMode,
     siabEnabled,
+    pushCount,
     modifierType: contractMatch?.modifierType ?? null,
     modifierValue: contractMatch?.modifierValue ?? null,
     contracts,
@@ -490,8 +506,9 @@ async function handlePredictCsNext({ interaction, sessionId, playerIndex, sessio
   });
 
   const avgTe = session.playerTe.reduce((sum, value) => sum + value, 0) / Math.max(1, session.playerTe.length);
+  const pushTe = computePusheeAverage(session.playerTe, session.pushCount);
   const assumptions = {
-    te: Math.round(avgTe),
+    te: Math.round(Number.isFinite(pushTe) ? pushTe : avgTe),
     teValues: session.playerTe,
     tokensPerPlayer: 0,
     swapBonus: false,
@@ -878,8 +895,9 @@ async function runPredictCsSandbox(interaction, session, sandboxData, contractOv
   });
 
   const avgTe = playerTe.reduce((sum, value) => sum + value, 0) / Math.max(1, playerTe.length);
+  const pushTe = computePusheeAverage(playerTe, session.pushCount);
   const assumptions = {
-    te: Math.round(avgTe),
+    te: Math.round(Number.isFinite(pushTe) ? pushTe : avgTe),
     teValues: playerTe,
     tokensPerPlayer: 0,
     swapBonus: false,
@@ -934,6 +952,17 @@ function buildSelectOptions(options, selectedName) {
     value: option.name,
     default: option.name === selectedName,
   }));
+}
+
+function computePusheeAverage(values, pushCount) {
+  const list = Array.isArray(values) ? values.filter(value => Number.isFinite(value)) : [];
+  if (!list.length) return 0;
+  const count = Number.isInteger(pushCount) ? Math.max(0, Math.min(pushCount, list.length)) : 0;
+  const selected = count > 0
+    ? [...list].sort((a, b) => b - a).slice(0, count)
+    : list;
+  const sum = selected.reduce((acc, value) => acc + value, 0);
+  return sum / Math.max(1, selected.length);
 }
 
 function buildTeOptions(selectedValue) {
