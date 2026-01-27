@@ -141,6 +141,10 @@ export function simulateScenario(options) {
       chickens: 0,
       maxChickens: config?.maxChickens ?? 0,
       ihr: config?.ihr ?? null,
+      elrPerChickenPreCrNoStones: config?.elrPerChickenPreCrNoStones ?? config?.elrPerChickenNoStones ?? 0,
+      elrPerChickenPreCrWithStones: config?.elrPerChickenPreCrWithStones ?? config?.elrPerChickenWithStones ?? 0,
+      srPreCrNoStones: config?.srPreCrNoStones ?? config?.srNoStones ?? 0,
+      srPreCrWithStones: config?.srPreCrWithStones ?? config?.srWithStones ?? 0,
       elrPerChickenNoStones: config?.elrPerChickenNoStones ?? 0,
       elrPerChickenWithStones: config?.elrPerChickenWithStones ?? 0,
       srNoStones: config?.srNoStones ?? 0,
@@ -151,6 +155,7 @@ export function simulateScenario(options) {
       eggsDelivered: 0,
       btv: 0,
       maxHab: false,
+      crRequested: false,
       timeToBoost: null,
       timeToMaxHab: null,
     };
@@ -286,8 +291,17 @@ export function updatePlayers(options) {
       }
     }
 
-    const elrPerChicken = player.maxHab ? player.elrPerChickenWithStones : player.elrPerChickenNoStones;
-    const shipRate = player.maxHab ? player.srWithStones : player.srNoStones;
+    const usesCrSet = player.crRequested === true;
+    const elrPerChicken = usesCrSet
+      ? (player.maxHab ? player.elrPerChickenWithStones : player.elrPerChickenNoStones)
+      : (player.maxHab
+        ? (player.elrPerChickenPreCrWithStones ?? player.elrPerChickenWithStones)
+        : (player.elrPerChickenPreCrNoStones ?? player.elrPerChickenNoStones));
+    const shipRate = usesCrSet
+      ? (player.maxHab ? player.srWithStones : player.srNoStones)
+      : (player.maxHab
+        ? (player.srPreCrWithStones ?? player.srWithStones)
+        : (player.srPreCrNoStones ?? player.srNoStones));
     const layRate = player.chickens * elrPerChicken * (1 + player.otherDefl / 100);
     const deliveryRate = Math.min(layRate, shipRate);
     player.eggsDelivered += updateRate * deliveryRate / 3600;

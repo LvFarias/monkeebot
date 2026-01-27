@@ -111,6 +111,9 @@ export function applyNextBoost(options) {
     if (currentPlayer.timeToBoost == null) {
       currentPlayer.timeToBoost = tElapsed;
     }
+    if (!currentPlayer.crRequested) {
+      currentPlayer.crRequested = true;
+    }
     return {
       numberBoosting: numberBoosting + 1,
       tokensUsed: tokensUsed + currentPlayer.tokens,

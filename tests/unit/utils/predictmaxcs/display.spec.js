@@ -18,6 +18,11 @@ vi.mock('../../../../utils/predictmaxcs/constants.js', () => ({
     { label: 'epic+', percent: 19 },
     { label: 'legendary', percent: 20 },
   ],
+  IHR_SET: {
+    chalice: { ihrMult: 1.4, slots: 3 },
+    monocle: { ihrMult: 1.3, slots: 3 },
+    deflector: { slots: 2 },
+  },
 }));
 
 vi.mock('../../../../utils/predictmaxcs/deflector.js', () => ({

@@ -390,6 +390,10 @@ export function buildPlayerConfigs(options) {
   const player1ChickenPenalty = baseChickens * (coleggtibles?.chickenMult ?? 1) * gussetBonus;
   const player1SlotPenalty = 1;
   const baseSiabPercent = Number.isFinite(IHR_SET.siabPercent) ? IHR_SET.siabPercent : 0;
+  const metroMult = Number.isFinite(BOOSTED_SET?.metro?.elrMult) ? BOOSTED_SET.metro.elrMult : 1;
+  const compassMult = Number.isFinite(BOOSTED_SET?.compass?.srMult) ? BOOSTED_SET.compass.srMult : 1;
+  const baseELRNoSet = metroMult > 0 ? baseELR / metroMult : baseELR;
+  const baseShipNoSet = compassMult > 0 ? baseShip / compassMult : baseShip;
 
   return Array.from({ length: players }, (_, index) => {
     const isPlayer1 = index === 0 && usePlayer1Siab;
@@ -406,6 +410,10 @@ export function buildPlayerConfigs(options) {
     return {
       maxChickens: playerMaxChickens,
       ihr,
+      elrPerChickenPreCrNoStones: baseELRNoSet,
+      elrPerChickenPreCrWithStones: baseELRNoSet,
+      srPreCrNoStones: baseShipNoSet,
+      srPreCrWithStones: baseShipNoSet,
       elrPerChickenNoStones: baseELR,
       elrPerChickenWithStones: baseELR * Math.pow(1.05, stoneLayout.numTach),
       srNoStones: baseShip,
