@@ -38,9 +38,9 @@ import {
   formatEggs,
   formatMinutes,
   formatBillions,
-  getChickenRunAskPop,
   secondsToHuman,
 } from '../../../../utils/predictmaxcs/display.js';
+import { getChickenRunAskPop } from '../../../../utils/predictmaxcs/chickenRun.js';
 
 const baseModel = {
   players: 2,
