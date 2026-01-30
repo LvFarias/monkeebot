@@ -29,13 +29,14 @@ function mapRemoteContract(obj, ContractType, eggEnum) {
   const name = decoded.name || 'Unknown';
   const release = decoded.startTime || 0;
   const season = decoded.seasonId || '';
+  const size = decoded.maxCoopSize || 0;
   let egg = eggEnum.valuesById[decoded.egg] || 'UNKNOWN';
 
   if (decoded.egg === 200) {
     egg = decoded.customEggId.toUpperCase().replaceAll('-', '_') || 'UNKNOWN';
   }
 
-  return { id: obj.id, name, release, season, egg };
+  return { id: obj.id, name, release, season, egg, size };
 }
 
 async function fetchAndCacheContracts() {

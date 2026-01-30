@@ -9,9 +9,18 @@ function ensureContractsTable() {
       name TEXT,
       release INTEGER DEFAULT 0,
       season TEXT,
-      egg TEXT
+      egg TEXT,
+      size INTEGER DEFAULT 0
     );
   `);
+}
+
+function migrateContractsTable() {
+  const cols = db.prepare("PRAGMA table_info('contracts')").all();
+  const hasSize = cols.some((col) => col.name === 'size');
+  if (!hasSize) {
+    db.exec(`ALTER TABLE contracts ADD COLUMN size INTEGER DEFAULT 0;`);
+  }
 }
 
 function ensureMetaTable() {
@@ -29,9 +38,12 @@ function ensureMembersTable() {
     CREATE TABLE IF NOT EXISTS members (
       internal_id INTEGER PRIMARY KEY AUTOINCREMENT,
       discord_id TEXT NOT NULL UNIQUE,
+      discord_name TEXT,
       ign TEXT,
       main_id INTEGER REFERENCES members(internal_id) ON DELETE SET NULL,
       is_mamabird INTEGER NOT NULL DEFAULT 0,
+      is_pushed INTEGER NOT NULL DEFAULT 0,
+      sheet_tab TEXT,
       is_active INTEGER NOT NULL DEFAULT 0
     );
   `);
@@ -54,6 +66,24 @@ function ensureMembersTable() {
     db.exec(`CREATE INDEX IF NOT EXISTS idx_members_mamabird ON members(is_mamabird)`);
   } catch (err) {
     console.warn('Failed to ensure idx_members_mamabird index:', err.message);
+  }
+}
+
+function migrateMembersTable() {
+  const cols = db.prepare("PRAGMA table_info('members')").all();
+  const hasIsPushed = cols.some((col) => col.name === 'is_pushed');
+  if (!hasIsPushed) {
+    db.exec(
+      `ALTER TABLE members ADD COLUMN is_pushed INTEGER NOT NULL DEFAULT 0;`,
+    );
+  }
+  const hasSheetTab = cols.some((col) => col.name === 'sheet_tab');
+  if (!hasSheetTab) {
+    db.exec(`ALTER TABLE members ADD COLUMN sheet_tab TEXT;`);
+  }
+  const hasDiscordName = cols.some((col) => col.name === 'discord_name');
+  if (!hasDiscordName) {
+    db.exec(`ALTER TABLE members ADD COLUMN discord_name TEXT;`);
   }
 }
 
@@ -104,8 +134,10 @@ function ensureCoopsTable() {
 
 function bootstrap() {
   ensureContractsTable();
+  migrateContractsTable();
   ensureMetaTable();
   ensureMembersTable();
+  migrateMembersTable();
   ensureMemberCoopsTable();
   return ensureCoopsTable();
 }
