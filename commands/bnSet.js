@@ -1,6 +1,7 @@
 import { SlashCommandBuilder } from 'discord.js';
 import { createTextComponentMessage } from '../services/discord.js';
 import { fetchUserTabNames } from '../services/googleSheetService.js';
+import { requireMamaBird } from '../utils/permissions.js';
 import {
 	listAllMembers,
 	updateMemberPushedByDiscordId,
@@ -56,7 +57,7 @@ export const data = new SlashCommandBuilder()
 	);
 
 export async function execute(interaction) {
-	// if (!(await requireMamaBird(interaction))) return;
+	if (!(await requireMamaBird(interaction))) return;
 	const subcommand = interaction.options.getSubcommand();
 	switch (subcommand) {
 		case 'pushed':
