@@ -88,6 +88,9 @@ function upsertContractRow(row) {
     modifierValue
   );
 }
+const getContractByIdStmt = db.prepare('SELECT * FROM contracts WHERE contract_id = ?');
+
+const getContractSizeStmt = db.prepare('SELECT max_coop_size FROM contracts WHERE contract_id = ?');
 
 export function upsertContracts(rows = []) {
   if (!Array.isArray(rows) || rows.length === 0) return;
@@ -135,4 +138,16 @@ export function getContractRelease(contractId) {
   if (!contractId) return null;
   const row = getContractReleaseStmt.get(String(contractId).trim());
   return row ? row.release : null;
+}
+
+export function getContractById(contractId) {
+  if (!contractId) return null;
+  const row = getContractByIdStmt.get(String(contractId).trim());
+  return row ? row : null;
+}
+
+export function getContractSize(contractId) {
+  if (!contractId) return null;
+  const row = getContractSizeStmt.get(String(contractId).trim());
+  return row ? row.max_coop_size : null;
 }

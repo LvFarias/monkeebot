@@ -1,7 +1,8 @@
 import db from './client.js';
 import { DEFAULT_MAMABIRD_IDS } from './schema.js';
 
-const findMemberStmt = db.prepare('SELECT internal_id, discord_id, ign, main_id, is_mamabird, is_active FROM members WHERE discord_id = ?');
+const findMemberStmt = db.prepare('SELECT internal_id, discord_id, ign, main_id, sheet_tab, is_mamabird, is_active FROM members WHERE discord_id = ?');
+const findMemberSheetTabNameStmt = db.prepare('SELECT sheet_tab FROM members WHERE discord_id = ?');
 const insertMemberStmt = db.prepare('INSERT INTO members (discord_id) VALUES (?)');
 const countMemberChildrenStmt = db.prepare('SELECT COUNT(*) AS cnt FROM members WHERE main_id = ?');
 const setMemberMainStmt = db.prepare('UPDATE members SET main_id = ? WHERE internal_id = ?');
@@ -10,8 +11,31 @@ const setMamaBirdStmt = db.prepare('UPDATE members SET is_mamabird = ? WHERE int
 const listMamaBirdsStmt = db.prepare('SELECT discord_id FROM members WHERE is_mamabird = 1 ORDER BY discord_id ASC');
 const listMembersWithoutIgnStmt = db.prepare('SELECT discord_id FROM members WHERE ign IS NULL AND is_active = 1 ORDER BY discord_id ASC');
 const listMembersWithIgnStmt = db.prepare('SELECT discord_id, ign FROM members WHERE ign IS NOT NULL AND is_active = 1 ORDER BY discord_id ASC');
+const listAllMemberStmt = db.prepare('SELECT * FROM members WHERE is_active = 1 ORDER BY sheet_tab ASC');
 const updateMemberIgnStmt = db.prepare('UPDATE members SET ign = ? WHERE internal_id = ?');
 const setMemberActiveStmt = db.prepare('UPDATE members SET is_active = ? WHERE internal_id = ?');
+const setMemberPushedStmt = db.prepare('UPDATE members SET is_pushed = ? WHERE discord_id = ?');
+const upsertBnPlayersStmt = db.prepare(`
+  INSERT INTO members (discord_id, discord_name, ign, main_id, is_mamabird, is_pushed, sheet_tab, is_active)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  ON CONFLICT(discord_id) DO UPDATE SET
+    discord_name = excluded.discord_name,
+    sheet_tab = excluded.sheet_tab,
+    is_active = excluded.is_active;
+`);
+
+export function upsertMember(row) {
+  upsertBnPlayersStmt.run(
+    row.discordId,
+    row.discordName,
+    row.ign,
+    row.mainId,
+    row.isMamaBird ? 1 : 0,
+    row.isPushed ? 1 : 0,
+    row.tabName,
+    row.isActive ? 1 : 0,
+  );
+}
 
 export function normalizeDiscordId(value) {
   if (value == null) return '';
@@ -22,6 +46,12 @@ export function getMemberRecord(discordId) {
   const id = normalizeDiscordId(discordId);
   if (!id) return null;
   return findMemberStmt.get(id) ?? null;
+}
+
+export function getMemberTabName(discordId) {
+  const id = normalizeDiscordId(discordId);
+  if (!id) return null;
+  return findMemberSheetTabNameStmt.get(id) ?? null;
 }
 
 export function ensureMemberRecord(discordId) {
@@ -90,6 +120,16 @@ export function updateMemberActiveByInternalId(internalId, isActive) {
 
   const desired = isActive ? 1 : 0;
   const info = setMemberActiveStmt.run(desired, internalId);
+  return { changes: info.changes ?? 0 };
+}
+
+export function updateMemberPushedByDiscordId(discordId, isPushed) {
+  if (!discordId) {
+    return { changes: 0 };
+  }
+
+  const desired = isPushed ? 1 : 0;
+  const info = setMemberPushedStmt.run(desired, discordId);
   return { changes: info.changes ?? 0 };
 }
 
@@ -213,6 +253,10 @@ export function listMembersWithIgn() {
       ign: row.ign == null ? null : String(row.ign),
     }))
     .filter(entry => entry.ign && entry.ign.trim() !== '');
+}
+
+export function listAllMembers() {
+  return listAllMemberStmt.all();
 }
 
 for (const id of DEFAULT_MAMABIRD_IDS) {

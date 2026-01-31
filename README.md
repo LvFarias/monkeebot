@@ -43,6 +43,9 @@ Minimum variables to run:
 TOKEN=your_discord_bot_token
 CLIENT_ID=your_discord_application_id
 
+# Sheets
+SPREADSHEET_ID=your_spreadsheet_id
+
 # Egg, Inc.
 EID=EIxxxxxxxxxxxxxxxx     # Egg, Inc. user ID (starts with EI)
 
@@ -84,6 +87,7 @@ Build and run:
 docker build -t monkee .
 docker run --rm \
   -e TOKEN=your_discord_bot_token \
+  -e SPREADSHEET_ID=your_spreadsheet_id \
   -e CLIENT_ID=your_discord_application_id \
   -e EID=EIxxxxxxxxxxxxxxxx \
   -e OPENAI_API_KEY=sk-... \
